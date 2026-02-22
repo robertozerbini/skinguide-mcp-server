@@ -1,0 +1,46 @@
+{
+  "name": "skinguide-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server for SkinGuide: search skincare products by Baumann skin type, product category, country, and budget. Exposes AI-friendly endpoints for dry, sensitive, and other skin types.",
+  "type": "module",
+  "main": "stdio.js",
+  "bin": {
+    "skinguide-mcp-server": "./stdio.js"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "stdio": "node stdio.js",
+    "test": "node examples/node_client.js"
+  },
+  "keywords": [
+    "mcp-server",
+    "ai-tool",
+    "skincare",
+    "baumann-skin-type",
+    "model-context-protocol",
+    "skinguide",
+    "beauty",
+    "dermatology",
+    "ai-agent"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.5.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "homepage": "https://skinguide.beauty/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/robertozerbini/skinguide-mcp-server.git"
+  },
+  "bugs": {
+    "url": "https://github.com/robertozerbini/skinguide-mcp-server/issues"
+  }
+}

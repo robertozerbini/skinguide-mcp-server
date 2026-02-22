@@ -1,0 +1,87 @@
+{
+  "name": "SkinGuide MCP",
+  "description": "Search skincare products by Baumann skin type, product category, and budget. Find the perfect products for your skin type among 16 different skin type profiles.",
+  "version": "1.0.0",
+  "server": "https://skinguide.beauty/api",
+  "homepage": "https://skinguide.beauty",
+  "tools": [
+    {
+      "name": "search_products",
+      "description": "Search skincare products based on skin type characteristics, product type, country, and budget. Returns products with name, brand, price, and compatible skin types.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Product type to search for",
+            "enum": ["Acne Treatment","Anti-Inflammatory Moisturizing","Anti-Inflammatory Product","Anti-age serum","Anti-inflammatory Product","Antioxidant Serum","At-Home Peel","Benzoyl Peroxide","Blushes","Body Moisture","Bottler","Cleanser","Concealers","Dark Spot Treatment","Exfoliation","Eye Cream","Face Massage","Facial Peels","Facial Scrub","Facial Water","Foundation","Kits","Lightening","Mask","Microdermabrasion","Moisturizer","Moisturizer Day","Moisturizer Night","Oil-control Powder","Oil-control Product","Oil-control product","Pimple Medication","Powder","Retinol Product","Scrub","Self-tanning","Serum","Skin Lightener","Spot Treatment","Sulfur Mask","Sunscreen","Toner","Wrinkle Prevention"]
+          },
+          "country": {
+            "type": "string",
+            "description": "Country for product availability: 'US' or 'UAE'. Defaults to 'US'.",
+            "enum": ["US", "UAE"]
+          },
+          "od": {
+            "type": "string",
+            "description": "Skin oiliness: 'O' for Oily, 'D' for Dry",
+            "enum": ["O", "D"]
+          },
+          "sr": {
+            "type": "string",
+            "description": "Skin sensitivity: 'S' for Sensitive, 'R' for Resistant",
+            "enum": ["S", "R"]
+          },
+          "pn": {
+            "type": "string",
+            "description": "Skin pigmentation: 'P' for Pigmented (prone to dark spots), 'N' for Non-pigmented",
+            "enum": ["P", "N"]
+          },
+          "wt": {
+            "type": "string",
+            "description": "Skin aging: 'W' for Wrinkled (shows aging), 'T' for Tight (firm)",
+            "enum": ["W", "T"]
+          },
+          "budget": {
+            "type": "number",
+            "description": "Maximum price in dollars. Use 5, 10, 20, 50, or 100. Use 101 for products over $100."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of products to return. Defaults to 50."
+          }
+        }
+      }
+    },
+    {
+      "name": "get_skin_type_info",
+      "description": "Get detailed information about a specific Baumann skin type (e.g., ORPW, DSNT). Returns the full name, description, and characteristics.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "skinType": {
+            "type": "string",
+            "description": "The 4-letter Baumann skin type code",
+            "enum": ["ORPW", "ORPT", "ORNW", "ORNT", "OSPW", "OSPT", "OSNW", "OSNT", "DRPW", "DRPT", "DRNW", "DRNT", "DSPW", "DSPT", "DSNW", "DSNT"]
+          }
+        },
+        "required": ["skinType"]
+      }
+    },
+    {
+      "name": "list_skin_types",
+      "description": "List all 16 Baumann skin types with their names and brief descriptions. Useful for understanding the skin type classification system.",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "get_product_types",
+      "description": "Get a list of all available product categories in the SkinGuide database.",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    }
+  ]
+}
