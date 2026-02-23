@@ -15,14 +15,26 @@ Requirements
 
 import json
 import subprocess
+import shutil
 import sys
-import os
 from pathlib import Path
 
 SERVER = Path(__file__).resolve().parent.parent / "stdio.js"
 
 
-# ── MCP stdio client ──────────────────────────────────────────────────────────
+# ── Preflight checks ───────────────────────────────────────────────────────
+
+def check_preflight() -> None:
+    if not shutil.which("node"):
+        print("[ERROR] 'node' not found in PATH. Install Node.js >= 18.", file=sys.stderr)
+        sys.exit(1)
+    node_modules = SERVER.parent / "node_modules"
+    if not node_modules.is_dir():
+        print(f"[ERROR] node_modules not found. Run:\n  cd {SERVER.parent} && npm install", file=sys.stderr)
+        sys.exit(1)
+
+
+# ── MCP stdio client ───────────────────────────────────────────────────────
 
 class McpClient:
     def __init__(self):
@@ -34,7 +46,7 @@ class McpClient:
             ["node", str(SERVER)],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
             text=True,
             bufsize=1,
         )
@@ -50,7 +62,15 @@ class McpClient:
         while True:
             raw = self._proc.stdout.readline()
             if not raw:
-                raise RuntimeError("Server closed stdout unexpectedly")
+                self._proc.wait()
+                stderr_out = self._proc.stderr.read().strip()
+                hint = ""
+                if "Cannot find module" in stderr_out or "MODULE_NOT_FOUND" in stderr_out:
+                    hint = f"\n  Hint: run 'npm install' in {SERVER.parent}"
+                raise RuntimeError(
+                    f"Server process exited (code {self._proc.returncode}).{hint}"
+                    + (f"\n  stderr: {stderr_out[:400]}" if stderr_out else "")
+                )
             try:
                 msg = json.loads(raw)
             except json.JSONDecodeError:
@@ -150,6 +170,7 @@ def demo_search_products_uae(client: McpClient) -> None:
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def main() -> None:
+    check_preflight()
     print(f"\nSkinGuide MCP Server — Python client demo")
     print(f"Server: {SERVER}")
 
