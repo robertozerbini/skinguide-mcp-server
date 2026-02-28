@@ -8,8 +8,10 @@
     "skinguide-mcp-server": "./stdio.js"
   },
   "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch server.js",
+    "build": "echo 'No build step required (JavaScript runtime).'",
+    "start": "node stdio.js",
+    "dev": "node --watch stdio.js",
+    "watch": "node --watch stdio.js",
     "stdio": "node stdio.js",
     "test": "node examples/node_client.js"
   },
@@ -30,7 +32,8 @@
     "@modelcontextprotocol/sdk": "^1.5.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
-    "express": "^4.21.2"
+    "express": "^4.21.2",
+    "zod": "^3.24.2"
   },
   "engines": {
     "node": ">=18.0.0"

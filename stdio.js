@@ -14,7 +14,19 @@ import {
   searchProducts, getSkinTypeInfo, listSkinTypes, getProductTypes,
 } from './api/tools.js';
 
-const mcp = new McpServer({ name: 'skinguide-mcp-server', version: '1.0.0' });
+const mcp = new McpServer(
+  { name: 'skinguide-mcp-server', version: '1.0.0' },
+  {
+    capabilities: {
+      tools: {},
+    },
+    instructions: 'Use tools/list to discover tools and tools/call to execute them.',
+  },
+);
+
+function logError(message) {
+  process.stderr.write(`[skinguide-mcp] ${message}\n`);
+}
 
 /* ── search_products ─────────────────────────────────────────────────────── */
 
@@ -87,4 +99,10 @@ mcp.tool(
 /* ── Connect ─────────────────────────────────────────────────────────────── */
 
 const transport = new StdioServerTransport();
-await mcp.connect(transport);
+
+try {
+  await mcp.connect(transport);
+} catch (error) {
+  logError(error instanceof Error ? error.message : String(error));
+  process.exit(1);
+}

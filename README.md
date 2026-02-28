@@ -59,6 +59,7 @@ AI agents, LLM applications, and developer tools can:
 
 ```
 skinguide-mcp-server/
+├── Dockerfile             # Optional containerized runtime
 ├── stdio.js               # MCP stdio entry-point (run via npx)
 ├── package.json
 ├── api/
@@ -74,7 +75,23 @@ skinguide-mcp-server/
 
 ## Quick Start
 
+### Run locally (recommended for development)
+
+```bash
+npm install
+npm start
+```
+
+### Run via npx (published package)
+
 No installation required. The MCP server runs on-demand via `npx` and fetches live product data from `https://skinguide.beauty/api/products`.
+
+### Run with Docker
+
+```bash
+docker build -t skinguide-mcp .
+docker run -i --rm skinguide-mcp
+```
 
 ### Connect to Claude Desktop
 
@@ -115,8 +132,8 @@ Edit `.vscode/mcp.json`:
   "servers": {
     "skinguide": {
       "type": "stdio",
-      "command": "npx",
-      "args": ["skinguide-mcp-server"]
+      "command": "node",
+      "args": ["stdio.js"]
     }
   }
 }

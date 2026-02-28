@@ -14,6 +14,8 @@
  *                     image, link, country, skinTypes[] }
  */
 
+import { z } from 'zod';
+
 const LIVE_API_URL = process.env.LIVE_API_URL ?? 'https://skinguide.beauty/api';
 
 /* ── Product Types ───────────────────────────────────────────────────────────
@@ -65,6 +67,24 @@ export const PRODUCT_TYPES = [
   'Wrinkle Prevention',
 ];
 
+const SearchProductsInputSchema = z.object({
+  type: z.enum(PRODUCT_TYPES).optional(),
+  country: z.enum(['US', 'UAE']).optional().default('US'),
+  od: z.enum(['O', 'D']).optional(),
+  sr: z.enum(['S', 'R']).optional(),
+  pn: z.enum(['P', 'N']).optional(),
+  wt: z.enum(['W', 'T']).optional(),
+  budget: z.number().positive().optional(),
+  limit: z.number().int().min(1).max(50).optional().default(50),
+}).strict();
+
+function formatValidationError(error) {
+  return error.issues.map(issue => {
+    const field = issue.path.length ? issue.path.join('.') : 'input';
+    return `${field}: ${issue.message}`;
+  }).join('; ');
+}
+
 /* ── Baumann Skin Types (static — no live endpoint exists) ───────────────── */
 
 const SKIN_TYPES = {
@@ -112,13 +132,20 @@ function matchesSkinType(productSkinTypes, { od, sr, pn, wt }) {
  * Forwards to live API then applies client-side filters for budget and skin
  * type axes (the live API only filters by `type` and `country` server-side).
  */
-export async function searchProducts({
-  type,
-  country = 'US',   // 'US' | 'UAE'
-  od, sr, pn, wt,
-  budget,
-  limit = 50,
-} = {}) {
+export async function searchProducts(input = {}) {
+  const parsed = SearchProductsInputSchema.safeParse(input ?? {});
+  if (!parsed.success) {
+    throw new Error(`Invalid search_products arguments: ${formatValidationError(parsed.error)}`);
+  }
+
+  const {
+    type,
+    country = 'US',   // 'US' | 'UAE'
+    od, sr, pn, wt,
+    budget,
+    limit = 50,
+  } = parsed.data;
+
   const url = new URL(`${LIVE_API_URL}/products`);
   if (type)    url.searchParams.set('type', type);
   if (country) url.searchParams.set('country', country);

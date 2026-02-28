@@ -1,0 +1,10 @@
+{
+	"servers": {
+		"skinguide": {
+			"type": "stdio",
+			"command": "node",
+			"args": ["stdio.js"]
+		}
+	},
+	"inputs": []
+}
