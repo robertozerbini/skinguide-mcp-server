@@ -3,17 +3,17 @@
   "version": "1.0.0",
   "description": "MCP server for SkinGuide: search skincare products by Baumann skin type, product category, country, and budget. Exposes AI-friendly endpoints for dry, sensitive, and other skin types.",
   "type": "module",
-  "main": "stdio.js",
+  "main": "dist/index.js",
   "bin": {
-    "skinguide-mcp-server": "./stdio.js"
+    "skinguide": "./dist/index.js"
   },
   "scripts": {
-    "build": "echo 'No build step required (JavaScript runtime).'",
-    "start": "node stdio.js",
-    "dev": "node --watch stdio.js",
-    "watch": "node --watch stdio.js",
-    "stdio": "node stdio.js",
-    "test": "node examples/node_client.js"
+    "build": "NODE_OPTIONS=--max-old-space-size=8192 tsc",
+    "prestart": "npm run build",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "watch": "NODE_OPTIONS=--max-old-space-size=8192 tsc --watch",
+    "test": "npm run build && node examples/node_client.js"
   },
   "keywords": [
     "mcp-server",
@@ -30,10 +30,12 @@
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.5.0",
-    "cors": "^2.8.5",
-    "dotenv": "^16.4.5",
-    "express": "^4.21.2",
     "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
   },
   "engines": {
     "node": ">=18.0.0"

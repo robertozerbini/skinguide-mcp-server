@@ -2,14 +2,14 @@
 """
 SkinGuide MCP Server — Python Example Client
 =============================================
-Spawns the MCP stdio server (node stdio.js) as a child process and
+Spawns the MCP stdio server (node dist/index.js) as a child process and
 communicates over stdin/stdout using the MCP JSON-RPC 2.0 protocol.
 
 Usage
     python3 examples/python_client.py
 
 Requirements
-    Node.js >= 18  (to run stdio.js)
+    Node.js >= 18  (to run dist/index.js)
     Python >= 3.9  (stdlib only, no pip install needed)
 """
 
@@ -19,7 +19,7 @@ import shutil
 import sys
 from pathlib import Path
 
-SERVER = Path(__file__).resolve().parent.parent / "stdio.js"
+SERVER = Path(__file__).resolve().parent.parent / "dist/index.js"
 
 
 # ── Preflight checks ───────────────────────────────────────────────────────

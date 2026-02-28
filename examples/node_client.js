@@ -17,7 +17,7 @@ import { resolve, dirname } from 'path';
 import { fileURLToPath }    from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const SERVER    = resolve(__dirname, '../stdio.js');
+const SERVER    = resolve(__dirname, '../dist/index.js');
 
 // ── MCP stdio client ──────────────────────────────────────────────────────────
 

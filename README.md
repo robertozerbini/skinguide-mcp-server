@@ -60,10 +60,13 @@ AI agents, LLM applications, and developer tools can:
 ```
 skinguide-mcp-server/
 ├── Dockerfile             # Optional containerized runtime
-├── stdio.js               # MCP stdio entry-point (run via npx)
+├── src/
+│   ├── index.ts           # MCP stdio entry-point (TypeScript)
+│   ├── tools.ts           # Tool handlers + live API proxy
+│   └── types.ts           # Shared interfaces/types
+├── dist/                  # Compiled output (generated)
 ├── package.json
-├── api/
-│   └── tools.js           # Tool handlers + live API proxy
+├── tsconfig.json
 ├── examples/
 │   ├── python_client.py   # Python demo (stdlib only)
 │   └── node_client.js     # Node.js demo (built-in fetch)
@@ -133,7 +136,7 @@ Edit `.vscode/mcp.json`:
     "skinguide": {
       "type": "stdio",
       "command": "node",
-      "args": ["stdio.js"]
+      "args": ["dist/index.js"]
     }
   }
 }

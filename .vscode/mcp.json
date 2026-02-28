@@ -3,7 +3,7 @@
 		"skinguide": {
 			"type": "stdio",
 			"command": "node",
-			"args": ["stdio.js"]
+			"args": ["dist/index.js"]
 		}
 	},
 	"inputs": []
