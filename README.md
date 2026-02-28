@@ -348,16 +348,57 @@ For a deeper look at the JSON-RPC 2.0 request/response format used over the wire
 
 ---
 
+## Direct API Usage (Python)
+
+You can also call the live API directly without the MCP server. The API accepts POST requests with JSON payload:
+
+```python
+import requests
+import json
+
+url = "https://skinguide.beauty/api/products"
+
+payload = {
+    "type": "Moisturizer Day",
+    "od": "D",              # Dry
+    "sr": "S",              # Sensitive
+    "budget": 20,
+    "country": "US",
+    "limit": 20
+}
+
+response = requests.post(url, json=payload)
+
+print("Status Code:", response.status_code)
+print("Response:", json.dumps(response.json(), indent=2))
+```
+
+**Supported parameters:**
+
+| Parameter | Type | Description |
+|---|---|---|
+| `type` | string | Product category (see `get_product_types` for full list) |
+| `country` | `"US"` or `"UAE"` | Country for product availability |
+| `od` | `"O"` or `"D"` | Oily or Dry |
+| `sr` | `"S"` or `"R"` | Sensitive or Resistant |
+| `pn` | `"P"` or `"N"` | Pigmented or Non-pigmented |
+| `wt` | `"W"` or `"T"` | Wrinkled or Tight |
+| `budget` | number | Maximum price in dollars (5, 10, 20, 50, 100, or 101 for over $100) |
+| `limit` | number | Maximum number of results (default 50) |
+
+---
+
 ## Example Clients
 
-Two demo clients are included in the `examples/` directory. They demonstrate all four tools and the full JSON-RPC 2.0 protocol format. Both are HTTP-based and require a self-hosted MCP HTTP server to be running.
+Three demo clients are included in the `examples/` directory:
 
 ```bash
-# Node.js (built-in fetch, Node >= 18)
-node examples/node_client.js --url http://localhost:3000
+# Direct API client (stdlib only — no Node.js required, works in Colab)
+python3 examples/direct_api_client.py
 
-# Python (stdlib only)
-python3 examples/python_client.py --url http://localhost:3000
+# MCP stdio clients (require Node.js + npm install)
+node examples/node_client.js
+python3 examples/python_client.py
 ```
 
 ---
