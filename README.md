@@ -447,3 +447,23 @@ Please follow [Conventional Commits](https://www.conventionalcommits.org/).
 ## License
 
 MIT — © SkinGuide · [skinguide.beauty](https://skinguide.beauty/)
+
+### Google Colab Notebook
+
+A Jupyter notebook demonstrating an AI agent that writes blog posts using SkinGuide:
+
+```
+examples/blogcreation.ipynb
+```
+
+**Features:**
+- Runs natively in Google Colab
+- Uses LangChain + LangGraph to create an autonomous agent
+- Bridges MCP server stdio with OpenAI GPT-4o for real-time product research
+- Generates Markdown blog posts with real skincare recommendations
+
+**Usage:**
+1. Open the notebook in [Google Colab](https://colab.research.google.com/)
+2. Add your `OPENAI_API_KEY` to Colab Secrets
+3. Clone/mount the repo and run cells sequentially
+4. Modify the `user_topic` variable to generate custom blog posts
