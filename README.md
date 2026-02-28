@@ -26,9 +26,12 @@
 - [Tool Reference and Examples](#tool-reference-and-examples)
 - [Baumann Skin Type System](#baumann-skin-type-system)
 - [AI Agent Integration](#ai-agent-integration)
+- [Direct API Usage (Python)](#direct-api-usage-python)
+- [Google Colab Notebook](#google-colab-notebook)
 - [Example Clients](#example-clients)
 - [API Discovery](#api-discovery)
 - [Contributing](#contributing)
+- [License](#license)
 
 ---
 
@@ -68,8 +71,10 @@ skinguide-mcp-server/
 ├── package.json
 ├── tsconfig.json
 ├── examples/
-│   ├── python_client.py   # Python demo (stdlib only)
-│   └── node_client.js     # Node.js demo (built-in fetch)
+│   ├── blogcreation.ipynb # Colab notebook: autonomous blog-writing agent
+│   ├── direct_api_client.py
+│   ├── node_client.js     # Node.js demo (built-in fetch)
+│   └── python_client.py   # Python MCP stdio demo
 └── .well-known/
     └── mcp.json           # MCP discovery document
 ```
@@ -368,6 +373,28 @@ For a deeper look at the JSON-RPC 2.0 request/response format used over the wire
 
 ---
 
+## Google Colab Notebook
+
+A Jupyter notebook demonstrating an AI agent that writes blog posts using SkinGuide:
+
+```
+examples/blogcreation.ipynb
+```
+
+**Features:**
+- Runs natively in Google Colab
+- Uses LangChain + LangGraph to create an autonomous agent
+- Bridges MCP server stdio with OpenAI GPT-4o for real-time product research
+- Generates Markdown blog posts with real skincare recommendations
+
+**Usage:**
+1. Open the notebook in [Google Colab](https://colab.research.google.com/)
+2. Add your `OPENAI_API_KEY` to Colab Secrets
+3. Clone/mount the repo and run cells sequentially
+4. Modify the `user_topic` variable to generate custom blog posts
+
+---
+
 ## Direct API Usage (Python)
 
 You can also call the live API directly without the MCP server. The API accepts POST requests with JSON payload:
@@ -447,23 +474,3 @@ Please follow [Conventional Commits](https://www.conventionalcommits.org/).
 ## License
 
 MIT — © SkinGuide · [skinguide.beauty](https://skinguide.beauty/)
-
-### Google Colab Notebook
-
-A Jupyter notebook demonstrating an AI agent that writes blog posts using SkinGuide:
-
-```
-examples/blogcreation.ipynb
-```
-
-**Features:**
-- Runs natively in Google Colab
-- Uses LangChain + LangGraph to create an autonomous agent
-- Bridges MCP server stdio with OpenAI GPT-4o for real-time product research
-- Generates Markdown blog posts with real skincare recommendations
-
-**Usage:**
-1. Open the notebook in [Google Colab](https://colab.research.google.com/)
-2. Add your `OPENAI_API_KEY` to Colab Secrets
-3. Clone/mount the repo and run cells sequentially
-4. Modify the `user_topic` variable to generate custom blog posts
