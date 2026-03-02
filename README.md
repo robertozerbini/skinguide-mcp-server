@@ -24,6 +24,11 @@
 - [Quick Start](#quick-start)
 - [Environment Variables](#environment-variables)
 - [Tool Reference and Examples](#tool-reference-and-examples)
+  - [list_skin_types](#list_skin_types)
+  - [get_product_types](#get_product_types)
+  - [get_skin_type_info](#get_skin_type_info)
+  - [search_products](#search_products)
+  - [get_routine](#get_routine)
 - [Baumann Skin Type System](#baumann-skin-type-system)
 - [AI Agent Integration](#ai-agent-integration)
 - [Direct API Usage (Python)](#direct-api-usage-python)
@@ -51,10 +56,11 @@ AI agents, LLM applications, and developer tools can:
 
 | Tool | Description |
 |---|---|
-| `search_products` | Search products by skin type, category, country, and budget |
+| `search_products` | Search products by skin type, brand, category, country, and budget |
 | `get_skin_type_info` | Detailed info for a Baumann skin type code |
 | `list_skin_types` | All 16 Baumann codes with names, categories, and descriptions |
 | `get_product_types` | All available product categories |
+| `get_routine` | Step-by-step skincare routine for a Baumann skin type (AM/PM, gender) |
 
 ---
 
@@ -291,6 +297,7 @@ Input parameters:
 | `pn` | "P" or "N" | Pigmented or Non-pigmented axis |
 | `wt` | "W" or "T" | Wrinkled or Tight axis |
 | `type` | string | Product category. Call `get_product_types` for the full list. |
+| `brand` | string | Filter by brand name (partial match, case-insensitive). E.g. `CeraVe`, `La Roche`. |
 | `budget` | number | Maximum price in dollars (use 5, 10, 20, 50, 100, or 101 for over $100) |
 | `country` | "US" or "UAE" | Country. Defaults to `US`. |
 | `limit` | integer | Max results, 1–50 (default 50) |
@@ -323,6 +330,39 @@ Response:
       "country": "US",
       "skinTypes": ["OSPT"]
     }
+  ]
+}
+```
+
+### get_routine
+
+Get the step-by-step skincare routine for a Baumann skin type.
+
+Input parameters:
+
+| Parameter | Type | Description |
+|---|---|---|
+| `skinType` | string, **required** | 4-letter Baumann code, e.g. `OSPT` |
+| `gender` | "male" or "female" | Optional — filter steps by gender |
+| `timeOfDay` | "AM" or "PM" | Optional — filter to morning or evening steps |
+
+Example — AM routine for OSPT:
+
+```json
+{ "skinType": "OSPT", "timeOfDay": "AM" }
+```
+
+Response:
+
+```json
+{
+  "skinType": "OSPT",
+  "total": 4,
+  "steps": [
+    { "step": 1, "productType": "Cleanser",    "action": "Cleanse",          "timeOfDay": "AM" },
+    { "step": 2, "productType": "Toner",        "action": "Tone",             "timeOfDay": "AM" },
+    { "step": 3, "productType": "Serum",        "action": "Apply serum",      "timeOfDay": "AM" },
+    { "step": 4, "productType": "Sunscreen",    "action": "Apply sunscreen",  "timeOfDay": "AM" }
   ]
 }
 ```

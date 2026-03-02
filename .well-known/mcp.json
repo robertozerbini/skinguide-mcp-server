@@ -14,12 +14,15 @@
           "type": {
             "type": "string",
             "description": "Product type to search for",
-            "enum": ["Acne Treatment","Anti-Inflammatory Moisturizing","Anti-Inflammatory Product","Anti-age serum","Anti-inflammatory Product","Antioxidant Serum","At-Home Peel","Benzoyl Peroxide","Blushes","Body Moisture","Bottler","Cleanser","Concealers","Dark Spot Treatment","Exfoliation","Eye Cream","Face Massage","Facial Peels","Facial Scrub","Facial Water","Foundation","Kits","Lightening","Mask","Microdermabrasion","Moisturizer","Moisturizer Day","Moisturizer Night","Oil-control Powder","Oil-control Product","Oil-control product","Pimple Medication","Powder","Retinol Product","Scrub","Self-tanning","Serum","Skin Lightener","Spot Treatment","Sulfur Mask","Sunscreen","Toner","Wrinkle Prevention"]
+            "enum": ["Cleanser", "Moisturizer", "Serum", "Sunscreen", "Toner", "Eye Cream", "Face Mask", "Exfoliator", "Face Oil", "Treatment"]
+          },
+          "brand": {
+            "type": "string",
+            "description": "Filter by brand name (partial match, case-insensitive). E.g., 'CeraVe', 'La Roche', 'Neutrogena'."
           },
           "country": {
             "type": "string",
-            "description": "Country for product availability: 'US' or 'UAE'. Defaults to 'US'.",
-            "enum": ["US", "UAE"]
+            "description": "Country code for product availability (e.g., 'US', 'UAE'). Defaults to 'US'."
           },
           "od": {
             "type": "string",
@@ -54,7 +57,7 @@
     },
     {
       "name": "get_skin_type_info",
-      "description": "Get detailed information about a specific Baumann skin type (e.g., ORPW, DSNT). Returns the full name, description, and characteristics.",
+      "description": "Get detailed information about a specific Baumann skin type (e.g., ORPW, DSNT). Returns the title, full name, short description, long description, characteristics, and routine description.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -69,10 +72,35 @@
     },
     {
       "name": "list_skin_types",
-      "description": "List all 16 Baumann skin types with their names and brief descriptions. Useful for understanding the skin type classification system.",
+      "description": "List all 16 Baumann skin types with their titles, names, short descriptions, and long descriptions. Useful for understanding the skin type classification system.",
       "input_schema": {
         "type": "object",
         "properties": {}
+      }
+    },
+    {
+      "name": "get_routine",
+      "description": "Get the skincare routine steps for a specific Baumann skin type. Returns step-by-step instructions including product type, action, and time of day (AM/PM). Can filter by gender and time of day.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "skinType": {
+            "type": "string",
+            "description": "The 4-letter Baumann skin type code",
+            "enum": ["ORPW", "ORPT", "ORNW", "ORNT", "OSPW", "OSPT", "OSNW", "OSNT", "DRPW", "DRPT", "DRNW", "DRNT", "DSPW", "DSPT", "DSNW", "DSNT"]
+          },
+          "gender": {
+            "type": "string",
+            "description": "Filter by gender: 'male' or 'female'. Omit for all.",
+            "enum": ["male", "female"]
+          },
+          "timeOfDay": {
+            "type": "string",
+            "description": "Filter by time of day: 'AM' for morning, 'PM' for evening. Omit for all.",
+            "enum": ["AM", "PM"]
+          }
+        },
+        "required": ["skinType"]
       }
     },
     {

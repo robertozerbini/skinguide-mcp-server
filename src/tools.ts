@@ -6,6 +6,8 @@ import type {
   SkinTypeInfo,
   ListSkinTypesResult,
   GetProductTypesResult,
+  GetRoutineResult,
+  RoutineStep,
   SkinType,
 } from './types.js';
 
@@ -89,6 +91,7 @@ export const SKIN_TYPE_CODES = Object.keys(SKIN_TYPES) as SkinType[];
  */
 const SearchProductsInputSchema = z.object({
   type: z.enum(PRODUCT_TYPES).optional(),
+  brand: z.string().optional().describe('Filter by brand name (partial match, case-insensitive).'),
   country: z.enum(['US', 'UAE']).optional().default('US'),
   od: z.enum(['O', 'D']).optional(),
   sr: z.enum(['S', 'R']).optional(),
@@ -138,7 +141,7 @@ export async function searchProducts(input: unknown = {}): Promise<SearchProduct
     throw new Error(`Invalid search_products arguments: ${formatValidationError(parsed.error)}`);
   }
 
-  const { type, country = 'US', od, sr, pn, wt, budget, limit = 50 } = parsed.data;
+  const { type, brand, country = 'US', od, sr, pn, wt, budget, limit = 50 } = parsed.data;
 
   const url = new URL(`${LIVE_API_URL}/products`);
   if (type) url.searchParams.set('type', type);
@@ -153,6 +156,10 @@ export async function searchProducts(input: unknown = {}): Promise<SearchProduct
   let products = data.products ?? [];
 
   // Client-side filtering
+  if (brand) {
+    const brandLower = brand.toLowerCase();
+    products = products.filter(p => p.brand?.toLowerCase().includes(brandLower));
+  }
   if (budget != null) {
     products = products.filter(p => p.price <= budget);
   }
@@ -202,4 +209,37 @@ export function listSkinTypes(): ListSkinTypesResult {
 export function getProductTypes(): GetProductTypesResult {
   const productTypes = PRODUCT_TYPES.map(id => ({ id }));
   return { productTypes, total: productTypes.length };
+}
+
+/**
+ * Get skincare routine steps for a specific Baumann skin type
+ */
+export async function getRoutine(
+  skinType: string,
+  gender?: string,
+  timeOfDay?: string
+): Promise<GetRoutineResult> {
+  const type = skinType.toUpperCase() as SkinType;
+  if (!SKIN_TYPE_CODES.includes(type)) {
+    throw new Error(`Unknown skin type "${skinType}". Valid codes: ${SKIN_TYPE_CODES.join(', ')}`);
+  }
+
+  const url = new URL(`${LIVE_API_URL}/routine`);
+  url.searchParams.set('skinType', type);
+  if (gender) url.searchParams.set('gender', gender);
+  if (timeOfDay) url.searchParams.set('timeOfDay', timeOfDay);
+
+  const res = await fetch(url.toString());
+  if (!res.ok) {
+    throw new Error(`Live API error ${res.status}: ${res.statusText}`);
+  }
+
+  const data = (await res.json()) as { steps?: RoutineStep[] };
+  let steps: RoutineStep[] = data.steps ?? [];
+
+  return {
+    skinType: type,
+    steps,
+    total: steps.length,
+  };
 }

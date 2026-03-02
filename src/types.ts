@@ -69,3 +69,17 @@ export interface GetProductTypesResult {
   productTypes: Array<{ id: string }>;
   total: number;
 }
+
+export interface RoutineStep {
+  step: number;
+  productType: string;
+  action: string;
+  timeOfDay: 'AM' | 'PM';
+  gender?: string;
+}
+
+export interface GetRoutineResult {
+  skinType: SkinType;
+  steps: RoutineStep[];
+  total: number;
+}

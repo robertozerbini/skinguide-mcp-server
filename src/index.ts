@@ -20,6 +20,7 @@ import {
   getSkinTypeInfo,
   listSkinTypes,
   getProductTypes,
+  getRoutine,
 } from './tools.js';
 
 /**
@@ -59,6 +60,10 @@ server.tool(
       .enum(PRODUCT_TYPES)
       .optional()
       .describe('Product type to search for. Call get_product_types for all options.'),
+    brand: z
+      .string()
+      .optional()
+      .describe('Filter by brand name (partial match, case-insensitive). E.g., CeraVe, Neutrogena.'),
     country: z
       .enum(['US', 'UAE'])
       .optional()
@@ -173,6 +178,40 @@ server.tool(
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       log(`❌ get_product_types failed: ${errorMessage}`);
+      return {
+        isError: true,
+        content: [{ type: 'text', text: `Error: ${errorMessage}` }],
+      };
+    }
+  }
+);
+
+/**
+ * Tool: get_routine
+ * Get the skincare routine steps for a specific Baumann skin type
+ */
+server.tool(
+  'get_routine',
+  'Get the skincare routine steps for a specific Baumann skin type. Returns step-by-step instructions including product type, action, and time of day (AM/PM). Can filter by gender and time of day.',
+  {
+    skinType: SkinTypeEnum.describe('4-letter Baumann skin type code, e.g. OSPT'),
+    gender: z
+      .enum(['male', 'female'])
+      .optional()
+      .describe("Filter by gender: 'male' or 'female'. Omit for all."),
+    timeOfDay: z
+      .enum(['AM', 'PM'])
+      .optional()
+      .describe("Filter by time of day: 'AM' for morning, 'PM' for evening. Omit for all."),
+  },
+  async ({ skinType, gender, timeOfDay }) => {
+    try {
+      log(`🧴 Executing get_routine for: ${skinType} gender=${gender ?? 'all'} timeOfDay=${timeOfDay ?? 'all'}`);
+      const result = await getRoutine(skinType, gender, timeOfDay);
+      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      log(`❌ get_routine failed: ${errorMessage}`);
       return {
         isError: true,
         content: [{ type: 'text', text: `Error: ${errorMessage}` }],
