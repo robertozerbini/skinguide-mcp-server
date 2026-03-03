@@ -29,6 +29,7 @@
   - [get_skin_type_info](#get_skin_type_info)
   - [search_products](#search_products)
   - [get_routine](#get_routine)
+  - [get_brands](#get_brands)
 - [Baumann Skin Type System](#baumann-skin-type-system)
 - [AI Agent Integration](#ai-agent-integration)
 - [Direct API Usage (Python)](#direct-api-usage-python)
@@ -61,6 +62,7 @@ AI agents, LLM applications, and developer tools can:
 | `list_skin_types` | All 16 Baumann codes with names, categories, and descriptions |
 | `get_product_types` | All available product categories |
 | `get_routine` | Step-by-step skincare routine for a Baumann skin type (AM/PM, gender) |
+| `get_brands` | All available brands in the database, optionally filtered by country |
 
 ---
 
@@ -363,6 +365,41 @@ Response:
     { "step": 2, "productType": "Toner",        "action": "Tone",             "timeOfDay": "AM" },
     { "step": 3, "productType": "Serum",        "action": "Apply serum",      "timeOfDay": "AM" },
     { "step": 4, "productType": "Sunscreen",    "action": "Apply sunscreen",  "timeOfDay": "AM" }
+  ]
+}
+```
+
+---
+
+### get_brands
+
+Get all available skincare brands in the database.
+
+Input parameters:
+
+| Parameter | Type | Description |
+|---|---|---|
+| `country` | "US" or "UAE" | Optional — filter brands by country availability |
+
+Example — all US brands:
+
+```json
+{ "country": "US" }
+```
+
+Response:
+
+```json
+{
+  "country": "US",
+  "total": 42,
+  "brands": [
+    "Acure",
+    "Biossance",
+    "CeraVe",
+    "Clean & Clear",
+    "La Roche-Posay",
+    "Neutrogena"
   ]
 }
 ```

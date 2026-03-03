@@ -104,6 +104,19 @@
       }
     },
     {
+      "name": "get_brands",
+      "description": "Get a list of all available skincare brands in the SkinGuide database. Can be filtered by country.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "country": {
+            "type": "string",
+            "description": "Country code to filter brands by product availability (e.g., 'US', 'UAE'). Omit for all countries."
+          }
+        }
+      }
+    },
+    {
       "name": "get_product_types",
       "description": "Get a list of all available product categories in the SkinGuide database.",
       "input_schema": {

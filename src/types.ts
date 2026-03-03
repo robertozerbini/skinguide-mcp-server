@@ -83,3 +83,9 @@ export interface GetRoutineResult {
   steps: RoutineStep[];
   total: number;
 }
+
+export interface GetBrandsResult {
+  brands: string[];
+  total: number;
+  country?: string;
+}

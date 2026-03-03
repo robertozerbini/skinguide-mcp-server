@@ -21,6 +21,7 @@ import {
   listSkinTypes,
   getProductTypes,
   getRoutine,
+  getBrands,
 } from './tools.js';
 
 /**
@@ -178,6 +179,35 @@ server.tool(
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       log(`❌ get_product_types failed: ${errorMessage}`);
+      return {
+        isError: true,
+        content: [{ type: 'text', text: `Error: ${errorMessage}` }],
+      };
+    }
+  }
+);
+
+/**
+ * Tool: get_brands
+ * Get all available brands, optionally filtered by country
+ */
+server.tool(
+  'get_brands',
+  'Get a list of all available skincare brands in the SkinGuide database. Can be filtered by country.',
+  {
+    country: z
+      .enum(['US', 'UAE'])
+      .optional()
+      .describe("Country to filter brands by product availability: 'US' or 'UAE'. Omit for all."),
+  },
+  async ({ country }) => {
+    try {
+      log(`🏪 Executing get_brands country=${country ?? 'all'}`);
+      const result = await getBrands(country);
+      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      log(`❌ get_brands failed: ${errorMessage}`);
       return {
         isError: true,
         content: [{ type: 'text', text: `Error: ${errorMessage}` }],

@@ -7,6 +7,7 @@ import type {
   ListSkinTypesResult,
   GetProductTypesResult,
   GetRoutineResult,
+  GetBrandsResult,
   RoutineStep,
   SkinType,
 } from './types.js';
@@ -241,5 +242,33 @@ export async function getRoutine(
     skinType: type,
     steps,
     total: steps.length,
+  };
+}
+
+/**
+ * Get all available brands, optionally filtered by country
+ */
+export async function getBrands(country?: string): Promise<GetBrandsResult> {
+  const url = new URL(`${LIVE_API_URL}/products`);
+  if (country) url.searchParams.set('country', country);
+
+  const res = await fetch(url.toString());
+  if (!res.ok) {
+    throw new Error(`Live API error ${res.status}: ${res.statusText}`);
+  }
+
+  const data = (await res.json()) as { products?: SkincareProduct[] };
+  const products = data.products ?? [];
+
+  const brands = [...new Set(
+    products
+      .map(p => p.brand)
+      .filter((b): b is string => typeof b === 'string' && b.trim().length > 0)
+  )].sort();
+
+  return {
+    brands,
+    total: brands.length,
+    ...(country ? { country } : {}),
   };
 }
