@@ -89,3 +89,17 @@ export interface GetBrandsResult {
   total: number;
   country?: string;
 }
+
+export type SkinTypeImageRace = 'Asian' | 'Black' | 'Latin' | 'White';
+
+export interface SkinTypeImageEntry {
+  skinType: SkinType;
+  race: SkinTypeImageRace;
+  url: string;
+}
+
+export interface GetSkinTypeImageResult {
+  skinType: SkinType;
+  images: SkinTypeImageEntry[];
+  total: number;
+}

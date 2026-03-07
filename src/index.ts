@@ -22,6 +22,7 @@ import {
   getProductTypes,
   getRoutine,
   getBrands,
+  getSkinTypeImage,
 } from './tools.js';
 
 /**
@@ -242,6 +243,36 @@ server.tool(
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       log(`❌ get_routine failed: ${errorMessage}`);
+      return {
+        isError: true,
+        content: [{ type: 'text', text: `Error: ${errorMessage}` }],
+      };
+    }
+  }
+);
+
+/**
+ * Tool: get_skin_type_image
+ * Get skin type illustration image(s) by skin type and optional race
+ */
+server.tool(
+  'get_skin_type_image',
+  'Get illustration image URL(s) for a Baumann skin type. Returns portrait images representing the skin type for different ethnicities. Optionally filter by race.',
+  {
+    skinType: SkinTypeEnum.describe('4-letter Baumann skin type code, e.g. OSPT'),
+    race: z
+      .enum(['Asian', 'Black', 'Latin', 'White'])
+      .optional()
+      .describe("Filter by ethnicity: 'Asian', 'Black', 'Latin', or 'White'. Omit to return all races."),
+  },
+  async ({ skinType, race }) => {
+    try {
+      log(`🖼️  Executing get_skin_type_image for: ${skinType} race=${race ?? 'all'}`);
+      const result = getSkinTypeImage(skinType, race);
+      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      log(`❌ get_skin_type_image failed: ${errorMessage}`);
       return {
         isError: true,
         content: [{ type: 'text', text: `Error: ${errorMessage}` }],

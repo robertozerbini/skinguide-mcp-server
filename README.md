@@ -30,6 +30,7 @@
   - [search_products](#search_products)
   - [get_routine](#get_routine)
   - [get_brands](#get_brands)
+  - [get_skin_type_image](#get_skin_type_image)
 - [Baumann Skin Type System](#baumann-skin-type-system)
 - [AI Agent Integration](#ai-agent-integration)
 - [Direct API Usage (Python)](#direct-api-usage-python)
@@ -63,6 +64,7 @@ AI agents, LLM applications, and developer tools can:
 | `get_product_types` | All available product categories |
 | `get_routine` | Step-by-step skincare routine for a Baumann skin type (AM/PM, gender) |
 | `get_brands` | All available brands in the database, optionally filtered by country |
+| `get_skin_type_image` | Illustration image URLs for a skin type, optionally filtered by ethnicity |
 
 ---
 
@@ -400,6 +402,46 @@ Response:
     "Clean & Clear",
     "La Roche-Posay",
     "Neutrogena"
+  ]
+}
+```
+
+---
+
+### get_skin_type_image
+
+Get illustration image URL(s) for a Baumann skin type. Returns portrait images (hosted on Firebase Storage) representing the skin type across different ethnicities.
+
+Input parameters:
+
+| Parameter | Type | Description |
+|---|---|---|
+| `skinType` | string, **required** | 4-letter Baumann code, e.g. `OSPT` |
+| `race` | "Asian", "Black", "Latin", or "White" | Optional — filter to a specific ethnicity. Omit for all four. |
+
+Example — all images for OSPT:
+
+```json
+{ "skinType": "OSPT" }
+```
+
+Example — Asian image only:
+
+```json
+{ "skinType": "OSPT", "race": "Asian" }
+```
+
+Response:
+
+```json
+{
+  "skinType": "OSPT",
+  "total": 4,
+  "images": [
+    { "skinType": "OSPT", "race": "Asian", "url": "https://firebasestorage.googleapis.com/...OSPTAsian.png..." },
+    { "skinType": "OSPT", "race": "Black", "url": "https://firebasestorage.googleapis.com/...OSPTBlack.png..." },
+    { "skinType": "OSPT", "race": "Latin", "url": "https://firebasestorage.googleapis.com/...OSPTLatino.png..." },
+    { "skinType": "OSPT", "race": "White", "url": "https://firebasestorage.googleapis.com/...OSPTWhite.png..." }
   ]
 }
 ```

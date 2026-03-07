@@ -117,6 +117,26 @@
       }
     },
     {
+      "name": "get_skin_type_image",
+      "description": "Get illustration image URL(s) for a Baumann skin type. Returns portrait images representing the skin type for different ethnicities. Optionally filter by race.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "skinType": {
+            "type": "string",
+            "description": "The 4-letter Baumann skin type code",
+            "enum": ["ORPW", "ORPT", "ORNW", "ORNT", "OSPW", "OSPT", "OSNW", "OSNT", "DRPW", "DRPT", "DRNW", "DRNT", "DSPW", "DSPT", "DSNW", "DSNT"]
+          },
+          "race": {
+            "type": "string",
+            "description": "Filter by ethnicity. Omit to return all races.",
+            "enum": ["Asian", "Black", "Latin", "White"]
+          }
+        },
+        "required": ["skinType"]
+      }
+    },
+    {
       "name": "get_product_types",
       "description": "Get a list of all available product categories in the SkinGuide database.",
       "input_schema": {
