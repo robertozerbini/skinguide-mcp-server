@@ -21,6 +21,8 @@ export interface SkincareProduct {
   price: number;
   currency: string;
   size?: string | null;
+  vegan?: boolean;
+  ingredients?: string[];
   image?: string;
   link?: string;
   country: string;
@@ -29,12 +31,14 @@ export interface SkincareProduct {
 
 export interface SearchProductsParams {
   type?: string;
-  country?: 'US' | 'UAE';
+  skinType?: string;
   od?: 'O' | 'D';
   sr?: 'S' | 'R';
   pn?: 'P' | 'N';
   wt?: 'W' | 'T';
   budget?: number;
+  keyword?: string;
+  ingredient?: string;
   limit?: number;
 }
 
@@ -42,12 +46,14 @@ export interface SearchProductsResult {
   total: number;
   query: {
     type: string;
-    country: string;
+    skinType: string | null;
     od: string | null;
     sr: string | null;
     pn: string | null;
     wt: string | null;
     budget: number | null;
+    keyword: string | null;
+    ingredient: string | null;
   };
   products: SkincareProduct[];
 }
@@ -87,7 +93,6 @@ export interface GetRoutineResult {
 export interface GetBrandsResult {
   brands: string[];
   total: number;
-  country?: string;
 }
 
 export type SkinTypeImageRace = 'Asian' | 'Black' | 'Latin' | 'White';

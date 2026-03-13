@@ -22,7 +22,6 @@ import {
   getProductTypes,
   getRoutine,
   getBrands,
-  getSkinTypeImage,
 } from './tools.js';
 
 /**
@@ -44,7 +43,7 @@ const server = new McpServer(
     capabilities: {
       tools: {},
     },
-    instructions: 'SkinGuide MCP Server: Search skincare products by Baumann skin type, category, country, and budget.',
+    instructions: 'SkinGuide MCP Server: Search skincare products by Baumann skin type, product category, budget, and ingredients. Find the perfect products for your skin type among 16 different skin type profiles.',
   }
 );
 
@@ -56,39 +55,46 @@ log('🚀 Initializing SkinGuide MCP Server');
  */
 server.tool(
   'search_products',
-  'Search skincare products based on skin type characteristics, product type, country, and budget. Returns products with name, brand, price, and compatible skin types.',
+  'Search skincare products based on skin type, product category, budget, vegan status, and ingredients. Returns products with name, brand, price, vegan status, ingredients list, and compatible skin types.',
   {
     type: z
       .enum(PRODUCT_TYPES)
       .optional()
-      .describe('Product type to search for. Call get_product_types for all options.'),
+      .describe('Product category to search for.'),
+    skinType: z
+      .string()
+      .optional()
+      .describe('Direct 4-letter Baumann skin type code, e.g. OSPT. Alternative to using od/sr/pn/wt individually.'),
     brand: z
       .string()
       .optional()
-      .describe('Filter by brand name (partial match, case-insensitive). E.g., CeraVe, Neutrogena.'),
-    country: z
-      .enum(['US', 'UAE'])
-      .optional()
-      .default('US')
-      .describe("Country for product availability: 'US' or 'UAE'. Defaults to 'US'."),
-    od: z.enum(['O', 'D']).optional().describe('Skin oiliness: O for Oily, D for Dry'),
+      .describe("Filter by brand name (partial match, case-insensitive). E.g., 'CeraVe', 'La Roche', 'Neutrogena'."),
+    od: z.enum(['O', 'D']).optional().describe("Skin oiliness: 'O' for Oily, 'D' for Dry"),
     sr: z
       .enum(['S', 'R'])
       .optional()
-      .describe('Skin sensitivity: S for Sensitive, R for Resistant'),
+      .describe("Skin sensitivity: 'S' for Sensitive, 'R' for Resistant"),
     pn: z
       .enum(['P', 'N'])
       .optional()
-      .describe('Skin pigmentation: P for Pigmented (prone to dark spots), N for Non-pigmented'),
+      .describe("Skin pigmentation: 'P' for Pigmented (prone to dark spots), 'N' for Non-pigmented"),
     wt: z
       .enum(['W', 'T'])
       .optional()
-      .describe('Skin aging: W for Wrinkled (shows aging), T for Tight (firm)'),
+      .describe("Skin aging: 'W' for Wrinkled (shows aging), 'T' for Tight (firm)"),
     budget: z
       .number()
       .positive()
       .optional()
       .describe('Maximum price in dollars. Use 5, 10, 20, 50, or 100. Use 101 for products over $100.'),
+    keyword: z
+      .string()
+      .optional()
+      .describe("Search keyword to match against product name (case-insensitive). E.g., 'acne', 'anti-aging'."),
+    ingredient: z
+      .string()
+      .optional()
+      .describe("Filter by ingredient name (partial match, case-insensitive). E.g., 'retinol', 'hyaluronic acid', 'niacinamide'."),
     limit: z
       .number()
       .int()
@@ -100,7 +106,7 @@ server.tool(
   },
   async (params) => {
     try {
-      log(`📦 Executing search_products with params: ${JSON.stringify(params)}`);
+      log(`📦 search_products params: ${JSON.stringify(params)}`);
       const result = await searchProducts(params);
       return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
     } catch (error) {
@@ -194,17 +200,12 @@ server.tool(
  */
 server.tool(
   'get_brands',
-  'Get a list of all available skincare brands in the SkinGuide database. Can be filtered by country.',
-  {
-    country: z
-      .enum(['US', 'UAE'])
-      .optional()
-      .describe("Country to filter brands by product availability: 'US' or 'UAE'. Omit for all."),
-  },
-  async ({ country }) => {
+  'Get a list of all available skincare brands in the SkinGuide product catalog.',
+  {},
+  async () => {
     try {
-      log(`🏪 Executing get_brands country=${country ?? 'all'}`);
-      const result = await getBrands(country);
+      log('🏪 Executing get_brands');
+      const result = await getBrands();
       return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -243,36 +244,6 @@ server.tool(
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       log(`❌ get_routine failed: ${errorMessage}`);
-      return {
-        isError: true,
-        content: [{ type: 'text', text: `Error: ${errorMessage}` }],
-      };
-    }
-  }
-);
-
-/**
- * Tool: get_skin_type_image
- * Get skin type illustration image(s) by skin type and optional race
- */
-server.tool(
-  'get_skin_type_image',
-  'Get illustration image URL(s) for a Baumann skin type. Returns portrait images representing the skin type for different ethnicities. Optionally filter by race.',
-  {
-    skinType: SkinTypeEnum.describe('4-letter Baumann skin type code, e.g. OSPT'),
-    race: z
-      .enum(['Asian', 'Black', 'Latin', 'White'])
-      .optional()
-      .describe("Filter by ethnicity: 'Asian', 'Black', 'Latin', or 'White'. Omit to return all races."),
-  },
-  async ({ skinType, race }) => {
-    try {
-      log(`🖼️  Executing get_skin_type_image for: ${skinType} race=${race ?? 'all'}`);
-      const result = getSkinTypeImage(skinType, race);
-      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      log(`❌ get_skin_type_image failed: ${errorMessage}`);
       return {
         isError: true,
         content: [{ type: 'text', text: `Error: ${errorMessage}` }],

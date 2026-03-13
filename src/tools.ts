@@ -21,49 +21,16 @@ const LIVE_API_URL = process.env.LIVE_API_URL ?? 'https://skinguide.beauty/api';
  * All available product categories
  */
 export const PRODUCT_TYPES = [
-  'Acne Treatment',
-  'Anti-Inflammatory Moisturizing',
-  'Anti-Inflammatory Product',
-  'Anti-age serum',
-  'Anti-inflammatory Product',
-  'Antioxidant Serum',
-  'At-Home Peel',
-  'Benzoyl Peroxide',
-  'Blushes',
-  'Body Moisture',
-  'Bottler',
   'Cleanser',
-  'Concealers',
-  'Dark Spot Treatment',
-  'Exfoliation',
-  'Eye Cream',
-  'Face Massage',
-  'Facial Peels',
-  'Facial Scrub',
-  'Facial Water',
-  'Foundation',
-  'Kits',
-  'Lightening',
-  'Mask',
-  'Microdermabrasion',
   'Moisturizer',
-  'Moisturizer Day',
-  'Moisturizer Night',
-  'Oil-control Powder',
-  'Oil-control Product',
-  'Oil-control product',
-  'Pimple Medication',
-  'Powder',
-  'Retinol Product',
-  'Scrub',
-  'Self-tanning',
   'Serum',
-  'Skin Lightener',
-  'Spot Treatment',
-  'Sulfur Mask',
   'Sunscreen',
   'Toner',
-  'Wrinkle Prevention',
+  'Eye Cream',
+  'Face Mask',
+  'Exfoliator',
+  'Face Oil',
+  'Treatment',
 ] as const;
 
 /**
@@ -95,13 +62,15 @@ export const SKIN_TYPE_CODES = Object.keys(SKIN_TYPES) as SkinType[];
  */
 const SearchProductsInputSchema = z.object({
   type: z.enum(PRODUCT_TYPES).optional(),
+  skinType: z.string().optional().describe('Direct 4-letter Baumann skin type code, e.g. OSPT.'),
   brand: z.string().optional().describe('Filter by brand name (partial match, case-insensitive).'),
-  country: z.enum(['US', 'UAE']).optional().default('US'),
   od: z.enum(['O', 'D']).optional(),
   sr: z.enum(['S', 'R']).optional(),
   pn: z.enum(['P', 'N']).optional(),
   wt: z.enum(['W', 'T']).optional(),
   budget: z.number().positive().optional(),
+  keyword: z.string().optional().describe('Search keyword to match against product name (case-insensitive).'),
+  ingredient: z.string().optional().describe('Filter by ingredient name (partial match, case-insensitive).'),
   limit: z.number().int().min(1).max(50).optional().default(50),
 }).strict();
 
@@ -145,11 +114,10 @@ export async function searchProducts(input: unknown = {}): Promise<SearchProduct
     throw new Error(`Invalid search_products arguments: ${formatValidationError(parsed.error)}`);
   }
 
-  const { type, brand, country = 'US', od, sr, pn, wt, budget, limit = 50 } = parsed.data;
+  const { type, skinType, brand, od, sr, pn, wt, budget, keyword, ingredient, limit = 50 } = parsed.data;
 
   const url = new URL(`${LIVE_API_URL}/products`);
   if (type) url.searchParams.set('type', type);
-  if (country) url.searchParams.set('country', country);
 
   const res = await fetch(url.toString());
   if (!res.ok) {
@@ -164,11 +132,25 @@ export async function searchProducts(input: unknown = {}): Promise<SearchProduct
     const brandLower = brand.toLowerCase();
     products = products.filter(p => p.brand?.toLowerCase().includes(brandLower));
   }
+  if (skinType) {
+    const skinTypeUpper = skinType.toUpperCase() as SkinType;
+    products = products.filter(p => (p.skinTypes ?? []).includes(skinTypeUpper));
+  }
   if (budget != null) {
     products = products.filter(p => p.price <= budget);
   }
   if (od || sr || pn || wt) {
     products = products.filter(p => matchesSkinType(p.skinTypes ?? [], { od, sr, pn, wt }));
+  }
+  if (keyword) {
+    const kwLower = keyword.toLowerCase();
+    products = products.filter(p => p.name?.toLowerCase().includes(kwLower));
+  }
+  if (ingredient) {
+    const ingLower = ingredient.toLowerCase();
+    products = products.filter(p =>
+      (p.ingredients ?? []).some(ing => ing.toLowerCase().includes(ingLower))
+    );
   }
 
   products = products.slice(0, Math.min(limit, 50));
@@ -177,12 +159,14 @@ export async function searchProducts(input: unknown = {}): Promise<SearchProduct
     total: products.length,
     query: {
       type: type ?? 'all',
-      country: country ?? 'US',
+      skinType: skinType ?? null,
       od: od ?? null,
       sr: sr ?? null,
       pn: pn ?? null,
       wt: wt ?? null,
       budget: budget ?? null,
+      keyword: keyword ?? null,
+      ingredient: ingredient ?? null,
     },
     products,
   };
@@ -249,11 +233,10 @@ export async function getRoutine(
 }
 
 /**
- * Get all available brands, optionally filtered by country
+ * Get all available brands
  */
-export async function getBrands(country?: string): Promise<GetBrandsResult> {
+export async function getBrands(): Promise<GetBrandsResult> {
   const url = new URL(`${LIVE_API_URL}/products`);
-  if (country) url.searchParams.set('country', country);
 
   const res = await fetch(url.toString());
   if (!res.ok) {
@@ -272,7 +255,6 @@ export async function getBrands(country?: string): Promise<GetBrandsResult> {
   return {
     brands,
     total: brands.length,
-    ...(country ? { country } : {}),
   };
 }
 

@@ -7,22 +7,23 @@
   "tools": [
     {
       "name": "search_products",
-      "description": "Search skincare products based on skin type characteristics, product type, country, and budget. Returns products with name, brand, price, and compatible skin types.",
+      "description": "Search skincare products based on skin type, product category, budget, vegan status, and ingredients. Returns products with name, brand, price, vegan status, ingredients list, and compatible skin types.",
       "input_schema": {
         "type": "object",
         "properties": {
           "type": {
             "type": "string",
-            "description": "Product type to search for",
+            "description": "Product category to search for",
             "enum": ["Cleanser", "Moisturizer", "Serum", "Sunscreen", "Toner", "Eye Cream", "Face Mask", "Exfoliator", "Face Oil", "Treatment"]
           },
           "brand": {
             "type": "string",
             "description": "Filter by brand name (partial match, case-insensitive). E.g., 'CeraVe', 'La Roche', 'Neutrogena'."
           },
-          "country": {
+          "skinType": {
             "type": "string",
-            "description": "Country code for product availability (e.g., 'US', 'UAE'). Defaults to 'US'."
+            "description": "Direct 4-letter Baumann skin type code. Alternative to using od/sr/pn/wt individually.",
+            "enum": ["ORPW", "ORPT", "ORNW", "ORNT", "OSPW", "OSPT", "OSNW", "OSNT", "DRPW", "DRPT", "DRNW", "DRNT", "DSPW", "DSPT", "DSNW", "DSNT"]
           },
           "od": {
             "type": "string",
@@ -47,6 +48,14 @@
           "budget": {
             "type": "number",
             "description": "Maximum price in dollars. Use 5, 10, 20, 50, or 100. Use 101 for products over $100."
+          },
+          "keyword": {
+            "type": "string",
+            "description": "Search keyword to match against product name and search keywords (case-insensitive). E.g., 'acne', 'anti-aging'."
+          },
+          "ingredient": {
+            "type": "string",
+            "description": "Filter by ingredient name (partial match, case-insensitive). E.g., 'retinol', 'hyaluronic acid', 'niacinamide', 'salicylic acid', 'vitamin c'."
           },
           "limit": {
             "type": "number",
@@ -105,35 +114,10 @@
     },
     {
       "name": "get_brands",
-      "description": "Get a list of all available skincare brands in the SkinGuide database. Can be filtered by country.",
+      "description": "Get a list of all available skincare brands in the SkinGuide product catalog.",
       "input_schema": {
         "type": "object",
-        "properties": {
-          "country": {
-            "type": "string",
-            "description": "Country code to filter brands by product availability (e.g., 'US', 'UAE'). Omit for all countries."
-          }
-        }
-      }
-    },
-    {
-      "name": "get_skin_type_image",
-      "description": "Get illustration image URL(s) for a Baumann skin type. Returns portrait images representing the skin type for different ethnicities. Optionally filter by race.",
-      "input_schema": {
-        "type": "object",
-        "properties": {
-          "skinType": {
-            "type": "string",
-            "description": "The 4-letter Baumann skin type code",
-            "enum": ["ORPW", "ORPT", "ORNW", "ORNT", "OSPW", "OSPT", "OSNW", "OSNT", "DRPW", "DRPT", "DRNW", "DRNT", "DSPW", "DSPT", "DSNW", "DSNT"]
-          },
-          "race": {
-            "type": "string",
-            "description": "Filter by ethnicity. Omit to return all races.",
-            "enum": ["Asian", "Black", "Latin", "White"]
-          }
-        },
-        "required": ["skinType"]
+        "properties": {}
       }
     },
     {

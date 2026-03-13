@@ -1,6 +1,6 @@
 # skinguide-mcp-server
 
-> **MCP server for SkinGuide: search skincare products by Baumann skin type, product category, country, and budget. Exposes AI-friendly endpoints for dry, sensitive, and other skin types.**
+> **MCP server for SkinGuide: search skincare products by Baumann skin type, product category, budget, and ingredients. Exposes AI-friendly endpoints for dry, oily, sensitive, and all other skin types.**
 
 [![Node.js >= 18](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](https://nodejs.org/)
 [![MCP Protocol](https://img.shields.io/badge/protocol-MCP%202024--11--05-blue)](https://modelcontextprotocol.io/)
@@ -30,7 +30,6 @@
   - [search_products](#search_products)
   - [get_routine](#get_routine)
   - [get_brands](#get_brands)
-  - [get_skin_type_image](#get_skin_type_image)
 - [Baumann Skin Type System](#baumann-skin-type-system)
 - [AI Agent Integration](#ai-agent-integration)
 - [Direct API Usage (Python)](#direct-api-usage-python)
@@ -49,7 +48,7 @@ SkinGuide MCP Server implements the [Model Context Protocol](https://modelcontex
 AI agents, LLM applications, and developer tools can:
 
 - **Discover** all 16 Baumann skin types and their characteristics
-- **Search** a curated skincare product catalogue filtered by skin type, category, budget, and country
+- **Search** a curated skincare product catalogue filtered by skin type, category, budget, ingredients, and keywords
 - **Recommend** personalised routines based on Baumann axes (O/D, S/R, P/N, W/T)
 
 ---
@@ -58,13 +57,12 @@ AI agents, LLM applications, and developer tools can:
 
 | Tool | Description |
 |---|---|
-| `search_products` | Search products by skin type, brand, category, country, and budget |
+| `search_products` | Search products by skin type, brand, category, budget, keyword, and ingredient |
 | `get_skin_type_info` | Detailed info for a Baumann skin type code |
 | `list_skin_types` | All 16 Baumann codes with names, categories, and descriptions |
 | `get_product_types` | All available product categories |
 | `get_routine` | Step-by-step skincare routine for a Baumann skin type (AM/PM, gender) |
-| `get_brands` | All available brands in the database, optionally filtered by country |
-| `get_skin_type_image` | Illustration image URLs for a skin type, optionally filtered by ethnicity |
+| `get_brands` | All available brands in the database |
 
 ---
 
@@ -226,51 +224,18 @@ List all available product categories. Input: none.
 ```json
 {
   "productTypes": [
-    { "id": "Acne Treatment" },
-    { "id": "Anti-Inflammatory Moisturizing" },
-    { "id": "Anti-Inflammatory Product" },
-    { "id": "Anti-age serum" },
-    { "id": "Anti-inflammatory Product" },
-    { "id": "Antioxidant Serum" },
-    { "id": "At-Home Peel" },
-    { "id": "Benzoyl Peroxide" },
-    { "id": "Blushes" },
-    { "id": "Body Moisture" },
-    { "id": "Bottler" },
     { "id": "Cleanser" },
-    { "id": "Concealers" },
-    { "id": "Dark Spot Treatment" },
-    { "id": "Exfoliation" },
-    { "id": "Eye Cream" },
-    { "id": "Face Massage" },
-    { "id": "Facial Peels" },
-    { "id": "Facial Scrub" },
-    { "id": "Facial Water" },
-    { "id": "Foundation" },
-    { "id": "Kits" },
-    { "id": "Lightening" },
-    { "id": "Mask" },
-    { "id": "Microdermabrasion" },
     { "id": "Moisturizer" },
-    { "id": "Moisturizer Day" },
-    { "id": "Moisturizer Night" },
-    { "id": "Oil-control Powder" },
-    { "id": "Oil-control Product" },
-    { "id": "Oil-control product" },
-    { "id": "Pimple Medication" },
-    { "id": "Powder" },
-    { "id": "Retinol Product" },
-    { "id": "Scrub" },
-    { "id": "Self-tanning" },
     { "id": "Serum" },
-    { "id": "Skin Lightener" },
-    { "id": "Spot Treatment" },
-    { "id": "Sulfur Mask" },
     { "id": "Sunscreen" },
     { "id": "Toner" },
-    { "id": "Wrinkle Prevention" }
+    { "id": "Eye Cream" },
+    { "id": "Face Mask" },
+    { "id": "Exfoliator" },
+    { "id": "Face Oil" },
+    { "id": "Treatment" }
   ],
-  "total": 43
+  "total": 10
 }
 ```
 
@@ -296,14 +261,16 @@ Input parameters:
 
 | Parameter | Type | Description |
 |---|---|---|
+| `type` | string | Product category: `Cleanser`, `Moisturizer`, `Serum`, `Sunscreen`, `Toner`, `Eye Cream`, `Face Mask`, `Exfoliator`, `Face Oil`, `Treatment` |
+| `skinType` | string | Direct 4-letter Baumann code, e.g. `OSPT`. Alternative to using axes individually. |
 | `od` | "O" or "D" | Oily or Dry axis |
 | `sr` | "S" or "R" | Sensitive or Resistant axis |
 | `pn` | "P" or "N" | Pigmented or Non-pigmented axis |
 | `wt` | "W" or "T" | Wrinkled or Tight axis |
-| `type` | string | Product category. Call `get_product_types` for the full list. |
 | `brand` | string | Filter by brand name (partial match, case-insensitive). E.g. `CeraVe`, `La Roche`. |
+| `keyword` | string | Search keyword matched against product name (case-insensitive). E.g. `acne`, `anti-aging`. |
+| `ingredient` | string | Filter by ingredient (partial match, case-insensitive). E.g. `retinol`, `hyaluronic acid`. |
 | `budget` | number | Maximum price in dollars (use 5, 10, 20, 50, 100, or 101 for over $100) |
-| `country` | "US" or "UAE" | Country. Defaults to `US`. |
 | `limit` | integer | Max results, 1–50 (default 50) |
 
 Example — oily + sensitive skin (`od=O`, `sr=S`), budget $30:
@@ -314,21 +281,28 @@ Arguments:
 { "od": "O", "sr": "S", "budget": 30, "limit": 5 }
 ```
 
+Example — search by direct skin type and ingredient:
+
+```json
+{ "skinType": "OSPT", "ingredient": "niacinamide", "limit": 10 }
+```
+
 Response:
 
 ```json
 {
   "total": 5,
-  "query": { "type": "all", "country": "US", "od": "O", "sr": "S", "pn": null, "wt": null, "budget": 30 },
+  "query": { "type": "all", "skinType": null, "od": "O", "sr": "S", "pn": null, "wt": null, "budget": 30, "keyword": null, "ingredient": null },
   "products": [
     {
       "id": 534,
-      "name": "Persa-Gel 10 Oil-Free Acne Spot Treatment with Maximum Strength 10% Benzoyl Peroxide, Topical Pimple Cream Visibly Reduces Acne in One Day, Fragrance-Free, 1 fl. oz",
+      "name": "Persa-Gel 10 Oil-Free Acne Spot Treatment",
       "brand": "Clean & Clear",
-      "type": "Acne Treatment",
+      "type": "Treatment",
       "price": 5.97,
       "currency": "$",
-      "size": null,
+      "vegan": false,
+      "ingredients": ["Benzoyl Peroxide 10%"],
       "image": "https://m.media-amazon.com/images/I/612wW4IikOL._AC_UL320_.jpg",
       "link": "https://amzn.to/4aTFj3m",
       "country": "US",
@@ -375,25 +349,12 @@ Response:
 
 ### get_brands
 
-Get all available skincare brands in the database.
-
-Input parameters:
-
-| Parameter | Type | Description |
-|---|---|---|
-| `country` | "US" or "UAE" | Optional — filter brands by country availability |
-
-Example — all US brands:
-
-```json
-{ "country": "US" }
-```
+Get all available skincare brands in the database. Input: none.
 
 Response:
 
 ```json
 {
-  "country": "US",
   "total": 42,
   "brands": [
     "Acure",
@@ -410,6 +371,8 @@ Response:
 
 ### get_skin_type_image
 
+> ⚠️ This tool is available in the server but is **not exposed** in the current MCP discovery document. It can be re-enabled by adding it back to `.well-known/mcp.json` and `src/index.ts`.
+
 Get illustration image URL(s) for a Baumann skin type. Returns portrait images (hosted on Firebase Storage) representing the skin type across different ethnicities.
 
 Input parameters:
@@ -418,35 +381,6 @@ Input parameters:
 |---|---|---|
 | `skinType` | string, **required** | 4-letter Baumann code, e.g. `OSPT` |
 | `race` | "Asian", "Black", "Latin", or "White" | Optional — filter to a specific ethnicity. Omit for all four. |
-
-Example — all images for OSPT:
-
-```json
-{ "skinType": "OSPT" }
-```
-
-Example — Asian image only:
-
-```json
-{ "skinType": "OSPT", "race": "Asian" }
-```
-
-Response:
-
-```json
-{
-  "skinType": "OSPT",
-  "total": 4,
-  "images": [
-    { "skinType": "OSPT", "race": "Asian", "url": "https://firebasestorage.googleapis.com/...OSPTAsian.png..." },
-    { "skinType": "OSPT", "race": "Black", "url": "https://firebasestorage.googleapis.com/...OSPTBlack.png..." },
-    { "skinType": "OSPT", "race": "Latin", "url": "https://firebasestorage.googleapis.com/...OSPTLatino.png..." },
-    { "skinType": "OSPT", "race": "White", "url": "https://firebasestorage.googleapis.com/...OSPTWhite.png..." }
-  ]
-}
-```
-
----
 
 ## Baumann Skin Type System
 
