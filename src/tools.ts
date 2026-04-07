@@ -13,6 +13,9 @@ import type {
   SkinTypeImageRace,
   RoutineStep,
   SkinType,
+  GetTestQuestionsResult,
+  SubmitTestAnswerInput,
+  SubmitTestAnswersResult,
 } from './types.js';
 
 const LIVE_API_URL = process.env.LIVE_API_URL ?? 'https://skinguide.beauty/api';
@@ -21,22 +24,88 @@ const LIVE_API_URL = process.env.LIVE_API_URL ?? 'https://skinguide.beauty/api';
  * All available product categories
  */
 export const PRODUCT_TYPES = [
+  'Acne Treatment',
+  'Anti-age Product',
+  'Anti-inflammatory Product',
+  'Antioxidant Serum',
   'Cleanser',
-  'Moisturizer',
-  'Serum',
-  'Sunscreen',
-  'Toner',
   'Eye Cream',
-  'Face Mask',
-  'Exfoliator',
-  'Face Oil',
-  'Treatment',
+  'Facial Water',
+  'Foundation',
+  'Mask',
+  'Moisturizer',
+  'Moisturizer Night',
+  'Oil-control Product',
+  'Scrub',
+  'Self-tanning',
+  'Skin Lightener',
+  'Sunscreen',
 ] as const;
 
 /**
- * Baumann Skin Type database
+ * Get all skin type test questions for first-time users
  */
-const SKIN_TYPES: Record<SkinType, SkinTypeInfo> = {
+export async function getTestQuestions(): Promise<GetTestQuestionsResult> {
+  const candidatePaths = ['/test/questions', '/questions'];
+  let lastError = '';
+
+  for (const path of candidatePaths) {
+    const url = new URL(`${LIVE_API_URL}${path}`);
+    const res = await fetch(url.toString());
+    if (!res.ok) {
+      lastError = `Live API error ${res.status}: ${res.statusText}`;
+      continue;
+    }
+
+    const data = (await res.json()) as {
+      questions?: GetTestQuestionsResult['questions'];
+      total?: number;
+    };
+    const questions = data.questions ?? [];
+    return {
+      questions,
+      total: data.total ?? questions.length,
+    };
+  }
+
+  throw new Error(`Unable to fetch test questions. ${lastError}`.trim());
+}
+
+/**
+ * Submit answers for the Baumann skin type test and compute the final 4-letter skin type code
+ */
+export async function submitTestAnswers(
+  answers: SubmitTestAnswerInput[]
+): Promise<SubmitTestAnswersResult> {
+  const candidatePaths = ['/test/submit', '/submit-test-answers'];
+  const authToken = process.env.SKINGUIDE_AUTH_TOKEN;
+  let lastError = '';
+
+  for (const path of candidatePaths) {
+    const url = new URL(`${LIVE_API_URL}${path}`);
+    const res = await fetch(url.toString(), {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...(authToken ? { authorization: `Bearer ${authToken}` } : {}),
+      },
+      body: JSON.stringify({ answers }),
+    });
+
+    if (!res.ok) {
+      lastError = `Live API error ${res.status}: ${res.statusText}`;
+      continue;
+    }
+
+    return (await res.json()) as SubmitTestAnswersResult;
+  }
+
+  throw new Error(`Unable to submit test answers. ${lastError}`.trim());
+}
+
+type BaseSkinTypeInfo = Pick<SkinTypeInfo, 'code' | 'name' | 'category' | 'difficulty' | 'description'>;
+
+const SKIN_TYPES: Record<SkinType, BaseSkinTypeInfo> = {
   DSPW: { code: 'DSPW', name: 'Dry, Sensitive, Pigmented, Wrinkled', category: 'dry-sensitive', difficulty: 5, description: 'The most complex skin type. Needs rich hydration, anti-inflammatory care, brightening, and anti-aging support simultaneously.' },
   DSNW: { code: 'DSNW', name: 'Dry, Sensitive, Non-pigmented, Wrinkled', category: 'dry-sensitive', difficulty: 4, description: 'Dry and sensitive with visible aging but even tone. Prioritise deep hydration, barrier repair, and anti-aging actives.' },
   DSPT: { code: 'DSPT', name: 'Dry, Sensitive, Pigmented, Tight', category: 'dry-sensitive', difficulty: 3, description: 'Dry and sensitive with pigmentation issues. Focus on gentle brightening and barrier repair.' },
@@ -144,7 +213,12 @@ export async function searchProducts(input: unknown = {}): Promise<SearchProduct
   }
   if (keyword) {
     const kwLower = keyword.toLowerCase();
-    products = products.filter(p => p.name?.toLowerCase().includes(kwLower));
+    products = products.filter(p => {
+      const inName = p.name?.toLowerCase().includes(kwLower) ?? false;
+      const searchKeywords = (p as SkincareProduct & { searchKeywords?: string[] }).searchKeywords ?? [];
+      const inKeywords = searchKeywords.some(k => k.toLowerCase().includes(kwLower));
+      return inName || inKeywords;
+    });
   }
   if (ingredient) {
     const ingLower = ingredient.toLowerCase();
@@ -159,6 +233,7 @@ export async function searchProducts(input: unknown = {}): Promise<SearchProduct
     total: products.length,
     query: {
       type: type ?? 'all',
+      brand: brand ?? null,
       skinType: skinType ?? null,
       od: od ?? null,
       sr: sr ?? null,
@@ -180,14 +255,27 @@ export function getSkinTypeInfo(skinType: string): SkinTypeInfo {
   if (!t) {
     throw new Error(`Unknown skin type "${skinType}". Valid codes: ${SKIN_TYPE_CODES.join(', ')}`);
   }
-  return t;
+
+  return {
+    ...t,
+    title: `${t.code} - ${t.name}`,
+    fullName: t.name,
+    shortDescription: t.description,
+    longDescription: t.description,
+    characteristics: [
+      `Category: ${t.category}`,
+      `Difficulty: ${t.difficulty}/5`,
+      `Baumann code: ${t.code}`,
+    ],
+    routineDescription: `Recommended routine focus for ${t.code}: ${t.description}`,
+  };
 }
 
 /**
  * List all 16 Baumann skin types
  */
 export function listSkinTypes(): ListSkinTypesResult {
-  const skinTypes = Object.values(SKIN_TYPES);
+  const skinTypes = SKIN_TYPE_CODES.map(code => getSkinTypeInfo(code));
   return { skinTypes, total: skinTypes.length };
 }
 

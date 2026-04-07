@@ -31,6 +31,7 @@ export interface SkincareProduct {
 
 export interface SearchProductsParams {
   type?: string;
+  brand?: string;
   skinType?: string;
   od?: 'O' | 'D';
   sr?: 'S' | 'R';
@@ -46,6 +47,7 @@ export interface SearchProductsResult {
   total: number;
   query: {
     type: string;
+    brand: string | null;
     skinType: string | null;
     od: string | null;
     sr: string | null;
@@ -60,6 +62,12 @@ export interface SearchProductsResult {
 
 export interface SkinTypeInfo {
   code: SkinType;
+  title: string;
+  fullName: string;
+  shortDescription: string;
+  longDescription: string;
+  characteristics: string[];
+  routineDescription: string;
   name: string;
   category: string;
   difficulty: number;
@@ -93,6 +101,35 @@ export interface GetRoutineResult {
 export interface GetBrandsResult {
   brands: string[];
   total: number;
+}
+
+export interface TestQuestionOption {
+  text: string;
+  value: number;
+}
+
+export interface TestQuestion {
+  id: string;
+  dimension: 'O_D' | 'S_R' | 'P_N' | 'W_T';
+  question: string;
+  options: TestQuestionOption[];
+}
+
+export interface GetTestQuestionsResult {
+  questions: TestQuestion[];
+  total: number;
+}
+
+export interface SubmitTestAnswerInput {
+  questionId: string;
+  value: number;
+}
+
+export interface SubmitTestAnswersResult {
+  skinType: SkinType;
+  scores: Record<'O_D' | 'S_R' | 'P_N' | 'W_T', number>;
+  acne?: boolean;
+  darkSpots?: boolean;
 }
 
 export type SkinTypeImageRace = 'Asian' | 'Black' | 'Latin' | 'White';

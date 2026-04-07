@@ -22,6 +22,8 @@ import {
   getProductTypes,
   getRoutine,
   getBrands,
+  getTestQuestions,
+  submitTestAnswers,
 } from './tools.js';
 
 /**
@@ -36,14 +38,14 @@ function log(message: string): void {
  */
 const server = new McpServer(
   {
-    name: 'skinguide-mcp-server',
+    name: 'SkinGuide MCP',
     version: '1.0.0',
   },
   {
     capabilities: {
       tools: {},
     },
-    instructions: 'SkinGuide MCP Server: Search skincare products by Baumann skin type, product category, budget, and ingredients. Find the perfect products for your skin type among 16 different skin type profiles.',
+    instructions: 'Search skincare products by Baumann skin type, product category, and budget. Find the perfect products for your skin type among 16 different skin type profiles.',
   }
 );
 
@@ -61,10 +63,9 @@ server.tool(
       .enum(PRODUCT_TYPES)
       .optional()
       .describe('Product category to search for.'),
-    skinType: z
-      .string()
+    skinType: SkinTypeEnum
       .optional()
-      .describe('Direct 4-letter Baumann skin type code, e.g. OSPT. Alternative to using od/sr/pn/wt individually.'),
+      .describe('Direct 4-letter Baumann skin type code. Alternative to using od/sr/pn/wt individually.'),
     brand: z
       .string()
       .optional()
@@ -90,11 +91,11 @@ server.tool(
     keyword: z
       .string()
       .optional()
-      .describe("Search keyword to match against product name (case-insensitive). E.g., 'acne', 'anti-aging'."),
+      .describe("Search keyword to match against product name and search keywords (case-insensitive). E.g., 'acne', 'anti-aging'."),
     ingredient: z
       .string()
       .optional()
-      .describe("Filter by ingredient name (partial match, case-insensitive). E.g., 'retinol', 'hyaluronic acid', 'niacinamide'."),
+      .describe("Filter by ingredient name (partial match, case-insensitive). E.g., 'retinol', 'hyaluronic acid', 'niacinamide', 'salicylic acid', 'vitamin c'."),
     limit: z
       .number()
       .int()
@@ -126,9 +127,9 @@ server.tool(
  */
 server.tool(
   'get_skin_type_info',
-  'Get the full name, description, category, and difficulty rating for a specific Baumann skin type code.',
+  'Get detailed information about a specific Baumann skin type (e.g., ORPW, DSNT). Returns the title, full name, short description, long description, characteristics, and routine description.',
   {
-    skinType: SkinTypeEnum.describe('4-letter Baumann skin type code, e.g. OSPT'),
+    skinType: SkinTypeEnum.describe('The 4-letter Baumann skin type code'),
   },
   async ({ skinType }) => {
     try {
@@ -152,7 +153,7 @@ server.tool(
  */
 server.tool(
   'list_skin_types',
-  'List all 16 Baumann skin types with codes, names, categories, difficulty ratings, and descriptions.',
+  'List all 16 Baumann skin types with their titles, names, short descriptions, and long descriptions. Useful for understanding the skin type classification system.',
   {},
   async () => {
     try {
@@ -176,7 +177,7 @@ server.tool(
  */
 server.tool(
   'get_product_types',
-  'List all available product categories. Use the id value as the type parameter in search_products.',
+  'Get a list of all available product categories in the SkinGuide database.',
   {},
   async () => {
     try {
@@ -244,6 +245,65 @@ server.tool(
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       log(`❌ get_routine failed: ${errorMessage}`);
+      return {
+        isError: true,
+        content: [{ type: 'text', text: `Error: ${errorMessage}` }],
+      };
+    }
+  }
+);
+
+/**
+ * Tool: get_test_questions
+ * Get all skin type test questions for first-time users
+ */
+server.tool(
+  'get_test_questions',
+  'Get all skin type test questions for first-time users. Returns questions grouped by skin dimension (O_D, S_R, P_N, W_T) with answer options and scores. Use this to guide users through the Baumann skin type assessment.',
+  {},
+  async () => {
+    try {
+      log('📝 Executing get_test_questions');
+      const result = await getTestQuestions();
+      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      log(`❌ get_test_questions failed: ${errorMessage}`);
+      return {
+        isError: true,
+        content: [{ type: 'text', text: `Error: ${errorMessage}` }],
+      };
+    }
+  }
+);
+
+/**
+ * Tool: submit_test_answers
+ * Submit answers for the Baumann skin type test and compute the final 4-letter skin type code
+ */
+server.tool(
+  'submit_test_answers',
+  'Submit answers for the Baumann skin type test and compute the final 4-letter skin type code (e.g. DSNT, ORPW). Requires authentication: pass the Firebase ID token in the Authorization header as \'Bearer <token>\'. Saves the result to the user\'s profile. Returns the skin type code, a score breakdown per dimension, and optional flags for acne and dark spots.',
+  {
+    answers: z.array(
+      z.object({
+        questionId: z
+          .string()
+          .describe("The question identifier returned by get_test_questions (zero-based index as string, e.g. '0', '1', '2')."),
+        value: z
+          .number()
+          .describe('The numeric score of the chosen answer option.'),
+      })
+    ),
+  },
+  async ({ answers }) => {
+    try {
+      log('📝 Executing submit_test_answers');
+      const result = await submitTestAnswers(answers);
+      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      log(`❌ submit_test_answers failed: ${errorMessage}`);
       return {
         isError: true,
         content: [{ type: 'text', text: `Error: ${errorMessage}` }],
