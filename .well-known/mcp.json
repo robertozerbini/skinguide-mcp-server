@@ -14,6 +14,376 @@
           "type": {
             "type": "string",
             "description": "Product category to search for",
+            "enum": [
+              "Acne Treatments",
+              "Anti-Aging Solutions",
+              "Beauty Tools & Devices",
+              "Cleansing Solutions",
+              "Exfoliants & Peels",
+              "Eye Care",
+              "Facial Masks",
+              "Hydration & Toning",
+              "Makeup Products",
+              "Moisturizers",
+              "Oil Control Solutions",
+              "Pigmentation Treatments",
+              "Self-Tanning Products",
+              "Serums & Targeted Treatments",
+              "Soothing & Anti-Inflammatory",
+              "Sun Protection"
+            ]
+          },
+          "brand": {
+            "type": "string",
+            "description": "Filter by brand name (partial match, case-insensitive). E.g., 'CeraVe', 'La Roche', 'Neutrogena'."
+          },
+          "skinType": {
+            "type": "string",
+            "description": "Direct 4-letter Baumann skin type code. Alternative to using od/sr/pn/wt individually.",
+            "enum": ["ORPW", "ORPT", "ORNW", "ORNT", "OSPW", "OSPT", "OSNW", "OSNT", "DRPW", "DRPT", "DRNW", "DRNT", "DSPW", "DSPT", "DSNW", "DSNT"]
+          },
+          "od": {
+            "type": "string",
+            "description": "Skin oiliness: 'O' for Oily, 'D' for Dry",
+            "enum": ["O", "D"]
+          },
+          "sr": {
+            "type": "string",
+            "description": "Skin sensitivity: 'S' for Sensitive, 'R' for Resistant",
+            "enum": ["S", "R"]
+          },
+          "pn": {
+            "type": "string",
+            "description": "Skin pigmentation: 'P' for Pigmented (prone to dark spots), 'N' for Non-pigmented",
+            "enum": ["P", "N"]
+          },
+          "wt": {
+            "type": "string",
+            "description": "Skin aging: 'W' for Wrinkled (shows aging), 'T' for Tight (firm)",
+            "enum": ["W", "T"]
+          },
+          "budget": {
+            "type": "number",
+            "description": "Maximum price in dollars. Use 5, 10, 20, 50, or 100. Use 101 for products over $100."
+          },
+          "keyword": {
+            "type": "string",
+            "description": "Search keyword to match against product name and search keywords (case-insensitive). E.g., 'acne', 'anti-aging'."
+          },
+          "ingredient": {
+            "type": "string",
+            "description": "Filter by ingredient name (partial match, case-insensitive). E.g., 'retinol', 'hyaluronic acid', 'niacinamide', 'salicylic acid', 'vitamin c'."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of products to return. Defaults to 50."
+          }
+        }
+      }
+    },
+    {
+      "name": "get_skin_type_info",
+      "description": "Get detailed information about a specific Baumann skin type (e.g., ORPW, DSNT). Returns the title, full name, short description, long description, characteristics, and routine description.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "skinType": {
+            "type": "string",
+            "description": "The 4-letter Baumann skin type code",
+            "enum": ["ORPW", "ORPT", "ORNW", "ORNT", "OSPW", "OSPT", "OSNW", "OSNT", "DRPW", "DRPT", "DRNW", "DRNT", "DSPW", "DSPT", "DSNW", "DSNT"]
+          }
+        },
+        "required": ["skinType"]
+      }
+    },
+    {
+      "name": "list_skin_types",
+      "description": "List all 16 Baumann skin types with their titles, names, short descriptions, and long descriptions. Useful for understanding the skin type classification system.",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "get_routine",
+      "description": "Get the skincare routine steps for a specific Baumann skin type. Returns step-by-step instructions including product type, action, and time of day (AM/PM). Can filter by gender and time of day.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "skinType": {
+            "type": "string",
+            "description": "The 4-letter Baumann skin type code",
+            "enum": ["ORPW", "ORPT", "ORNW", "ORNT", "OSPW", "OSPT", "OSNW", "OSNT", "DRPW", "DRPT", "DRNW", "DRNT", "DSPW", "DSPT", "DSNW", "DSNT"]
+          },
+          "gender": {
+            "type": "string",
+            "description": "Filter by gender: 'male' or 'female'. Omit for all.",
+            "enum": ["male", "female"]
+          },
+          "timeOfDay": {
+            "type": "string",
+            "description": "Filter by time of day: 'AM' for morning, 'PM' for evening. Omit for all.",
+            "enum": ["AM", "PM"]
+          }
+        },
+        "required": ["skinType"]
+      }
+    },
+    {
+      "name": "get_brands",
+      "description": "Get a list of all available skincare brands in the SkinGuide product catalog.",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "get_product_types",
+      "description": "Get a list of all available product categories in the SkinGuide database.",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "get_test_questions",
+      "description": "Get all skin type test questions for first-time users. Returns questions grouped by skin dimension (O_D, S_R, P_N, W_T) with answer options and scores. Use this to guide users through the Baumann skin type assessment.",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "submit_test_answers",
+      "description": "Submit answers for the Baumann skin type test and compute the final 4-letter skin type code (e.g. DSNT, ORPW). Requires authentication: pass the Firebase ID token in the Authorization header as 'Bearer <token>'. Saves the result to the user's profile. Returns the skin type code, a score breakdown per dimension, and optional flags for acne and dark spots.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "answers": {
+            "type": "array",
+            "description": "Array of answers, one per question. Each entry contains the questionId (string index) and the selected score value (number).",
+            "items": {
+              "type": "object",
+              "properties": {
+                "questionId": {
+                  "type": "string",
+                  "description": "The question identifier returned by get_test_questions (zero-based index as string, e.g. '0', '1', '2')."
+                },
+                "value": {
+                  "type": "number",
+                  "description": "The numeric score of the chosen answer option."
+                }
+              },
+              "required": ["questionId", "value"]
+            }
+          }
+        },
+        "required": ["answers"]
+      }
+    }
+  ]
+}
+{
+  "name": "SkinGuide MCP",
+  "description": "Search skincare products by Baumann skin type, product category, and budget. Find the perfect products for your skin type among 16 different skin type profiles.",
+  "version": "1.0.0",
+  "server": "https://skinguide.beauty/api",
+  "homepage": "https://skinguide.beauty",
+  "tools": [
+    {
+      "name": "search_products",
+      "description": "Search skincare products based on skin type, product category, budget, vegan status, and ingredients. Returns products with name, brand, price, vegan status, ingredients list, and compatible skin types.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Product category to search for",
+            "enum": [
+              "Acne Treatments",
+              "Anti-Aging Solutions",
+              "Beauty Tools & Devices",
+              "Cleansing Solutions",
+              "Exfoliants & Peels",
+              "Eye Care",
+              "Facial Masks",
+              "Hydration & Toning",
+              "Makeup Products",
+              "Moisturizers",
+              "Oil Control Solutions",
+              "Pigmentation Treatments",
+              "Self-Tanning Products",
+              "Serums & Targeted Treatments",
+              "Soothing & Anti-Inflammatory",
+              "Sun Protection"
+            ]
+          },
+          "brand": {
+            "type": "string",
+            "description": "Filter by brand name (partial match, case-insensitive). E.g., 'CeraVe', 'La Roche', 'Neutrogena'."
+          },
+          "skinType": {
+            "type": "string",
+            "description": "Direct 4-letter Baumann skin type code. Alternative to using od/sr/pn/wt individually.",
+            "enum": ["ORPW", "ORPT", "ORNW", "ORNT", "OSPW", "OSPT", "OSNW", "OSNT", "DRPW", "DRPT", "DRNW", "DRNT", "DSPW", "DSPT", "DSNW", "DSNT"]
+          },
+          "od": {
+            "type": "string",
+            "description": "Skin oiliness: 'O' for Oily, 'D' for Dry",
+            "enum": ["O", "D"]
+          },
+          "sr": {
+            "type": "string",
+            "description": "Skin sensitivity: 'S' for Sensitive, 'R' for Resistant",
+            "enum": ["S", "R"]
+          },
+          "pn": {
+            "type": "string",
+            "description": "Skin pigmentation: 'P' for Pigmented (prone to dark spots), 'N' for Non-pigmented",
+            "enum": ["P", "N"]
+          },
+          "wt": {
+            "type": "string",
+            "description": "Skin aging: 'W' for Wrinkled (shows aging), 'T' for Tight (firm)",
+            "enum": ["W", "T"]
+          },
+          "budget": {
+            "type": "number",
+            "description": "Maximum price in dollars. Use 5, 10, 20, 50, or 100. Use 101 for products over $100."
+          },
+          "keyword": {
+            "type": "string",
+            "description": "Search keyword to match against product name and search keywords (case-insensitive). E.g., 'acne', 'anti-aging'."
+          },
+          "ingredient": {
+            "type": "string",
+            "description": "Filter by ingredient name (partial match, case-insensitive). E.g., 'retinol', 'hyaluronic acid', 'niacinamide', 'salicylic acid', 'vitamin c'."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of products to return. Defaults to 50."
+          }
+        }
+      }
+    },
+    {
+      "name": "get_skin_type_info",
+      "description": "Get detailed information about a specific Baumann skin type (e.g., ORPW, DSNT). Returns the title, full name, short description, long description, characteristics, and routine description.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "skinType": {
+            "type": "string",
+            "description": "The 4-letter Baumann skin type code",
+            "enum": ["ORPW", "ORPT", "ORNW", "ORNT", "OSPW", "OSPT", "OSNW", "OSNT", "DRPW", "DRPT", "DRNW", "DRNT", "DSPW", "DSPT", "DSNW", "DSNT"]
+          }
+        },
+        "required": ["skinType"]
+      }
+    },
+    {
+      "name": "list_skin_types",
+      "description": "List all 16 Baumann skin types with their titles, names, short descriptions, and long descriptions. Useful for understanding the skin type classification system.",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "get_routine",
+      "description": "Get the skincare routine steps for a specific Baumann skin type. Returns step-by-step instructions including product type, action, and time of day (AM/PM). Can filter by gender and time of day.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "skinType": {
+            "type": "string",
+            "description": "The 4-letter Baumann skin type code",
+            "enum": ["ORPW", "ORPT", "ORNW", "ORNT", "OSPW", "OSPT", "OSNW", "OSNT", "DRPW", "DRPT", "DRNW", "DRNT", "DSPW", "DSPT", "DSNW", "DSNT"]
+          },
+          "gender": {
+            "type": "string",
+            "description": "Filter by gender: 'male' or 'female'. Omit for all.",
+            "enum": ["male", "female"]
+          },
+          "timeOfDay": {
+            "type": "string",
+            "description": "Filter by time of day: 'AM' for morning, 'PM' for evening. Omit for all.",
+            "enum": ["AM", "PM"]
+          }
+        },
+        "required": ["skinType"]
+      }
+    },
+    {
+      "name": "get_brands",
+      "description": "Get a list of all available skincare brands in the SkinGuide product catalog.",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "get_product_types",
+      "description": "Get a list of all available product categories in the SkinGuide database.",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "get_test_questions",
+      "description": "Get all skin type test questions for first-time users. Returns questions grouped by skin dimension (O_D, S_R, P_N, W_T) with answer options and scores. Use this to guide users through the Baumann skin type assessment.",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "submit_test_answers",
+      "description": "Submit answers for the Baumann skin type test and compute the final 4-letter skin type code (e.g. DSNT, ORPW). Requires authentication: pass the Firebase ID token in the Authorization header as 'Bearer <token>'. Saves the result to the user's profile. Returns the skin type code, a score breakdown per dimension, and optional flags for acne and dark spots.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "answers": {
+            "type": "array",
+            "description": "Array of answers, one per question. Each entry contains the questionId (string index) and the selected score value (number).",
+            "items": {
+              "type": "object",
+              "properties": {
+                "questionId": {
+                  "type": "string",
+                  "description": "The question identifier returned by get_test_questions (zero-based index as string, e.g. '0', '1', '2')."
+                },
+                "value": {
+                  "type": "number",
+                  "description": "The numeric score of the chosen answer option."
+                }
+              },
+              "required": ["questionId", "value"]
+            }
+          }
+        },
+        "required": ["answers"]
+      }
+    }
+  ]
+}
+{
+  "name": "SkinGuide MCP",
+  "description": "Search skincare products by Baumann skin type, product category, and budget. Find the perfect products for your skin type among 16 different skin type profiles.",
+  "version": "1.0.0",
+  "server": "https://skinguide.beauty/api",
+  "homepage": "https://skinguide.beauty",
+  "tools": [
+    {
+      "name": "search_products",
+      "description": "Search skincare products based on skin type, product category, budget, vegan status, and ingredients. Returns products with name, brand, price, vegan status, ingredients list, and compatible skin types.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Product category to search for",
             "enum": ["Cleanser", "Moisturizer", "Serum", "Sunscreen", "Toner", "Eye Cream", "Face Mask", "Exfoliator", "Face Oil", "Treatment"]
           },
           "brand": {
