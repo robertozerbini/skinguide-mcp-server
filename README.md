@@ -30,6 +30,7 @@
   - [search_products](#search_products)
   - [get_routine](#get_routine)
   - [get_brands](#get_brands)
+  - [get_test_questions](#get_test_questions)
 - [Baumann Skin Type System](#baumann-skin-type-system)
 - [AI Agent Integration](#ai-agent-integration)
 - [Direct API Usage (Python)](#direct-api-usage-python)
@@ -63,6 +64,7 @@ AI agents, LLM applications, and developer tools can:
 | `get_product_types` | All available product categories |
 | `get_routine` | Step-by-step skincare routine for a Baumann skin type (AM/PM, gender) |
 | `get_brands` | All available brands in the database |
+| `get_test_questions` | All Baumann skin type quiz questions (grouped by dimension) |
 
 ---
 
@@ -224,18 +226,24 @@ List all available product categories. Input: none.
 ```json
 {
   "productTypes": [
+    { "id": "Acne Treatment" },
+    { "id": "Anti-age Product" },
+    { "id": "Anti-inflammatory Product" },
+    { "id": "Antioxidant Serum" },
     { "id": "Cleanser" },
-    { "id": "Moisturizer" },
-    { "id": "Serum" },
-    { "id": "Sunscreen" },
-    { "id": "Toner" },
     { "id": "Eye Cream" },
-    { "id": "Face Mask" },
-    { "id": "Exfoliator" },
-    { "id": "Face Oil" },
-    { "id": "Treatment" }
+    { "id": "Facial Water" },
+    { "id": "Foundation" },
+    { "id": "Mask" },
+    { "id": "Moisturizer" },
+    { "id": "Moisturizer Night" },
+    { "id": "Oil-control Product" },
+    { "id": "Scrub" },
+    { "id": "Self-tanning" },
+    { "id": "Skin Lightener" },
+    { "id": "Sunscreen" }
   ],
-  "total": 10
+  "total": 16
 }
 ```
 
@@ -257,34 +265,36 @@ Response:
 
 ### search_products
 
+> **Tip:** If `total=0`, retry with fewer filters. If `ingredient` returns 0, try `keyword=<ingredient_name>` instead — many products have incomplete ingredient data. `skinType` must be a 4-letter Baumann code (e.g. `OSPT`), not natural language.
+
 Input parameters:
 
 | Parameter | Type | Description |
 |---|---|---|
-| `type` | string | Product category: `Cleanser`, `Moisturizer`, `Serum`, `Sunscreen`, `Toner`, `Eye Cream`, `Face Mask`, `Exfoliator`, `Face Oil`, `Treatment` |
-| `skinType` | string | Direct 4-letter Baumann code, e.g. `OSPT`. Alternative to using axes individually. |
+| `type` | string | Product category — one of the 16 values returned by `get_product_types` |
+| `skinType` | string | 4-letter Baumann code, e.g. `OSPT`. Do NOT use natural language like "oily". |
 | `od` | "O" or "D" | Oily or Dry axis |
 | `sr` | "S" or "R" | Sensitive or Resistant axis |
 | `pn` | "P" or "N" | Pigmented or Non-pigmented axis |
 | `wt` | "W" or "T" | Wrinkled or Tight axis |
 | `brand` | string | Filter by brand name (partial match, case-insensitive). E.g. `CeraVe`, `La Roche`. |
-| `keyword` | string | Search keyword matched against product name (case-insensitive). E.g. `acne`, `anti-aging`. |
-| `ingredient` | string | Filter by ingredient (partial match, case-insensitive). E.g. `retinol`, `hyaluronic acid`. |
+| `keyword` | string | Search keyword matched against product name and tags. Use as fallback when `ingredient` returns 0. |
+| `ingredient` | string | Exact text match against the stored ingredient list. Returns 0 when data is incomplete — use `keyword` instead. |
 | `budget` | number | Maximum price in dollars (use 5, 10, 20, 50, 100, or 101 for over $100) |
 | `limit` | integer | Max results, 1–50 (default 50) |
 
-Example — oily + sensitive skin (`od=O`, `sr=S`), budget $30:
+When `ingredient` is used, the response includes `available_without_ingredient_filter` — the number of products that matched all other filters before the ingredient check. If that value is > 0 but `total` is 0, retry with `keyword` instead.
 
-Arguments:
+Example — oily + sensitive skin (`od=O`, `sr=S`), budget $30:
 
 ```json
 { "od": "O", "sr": "S", "budget": 30, "limit": 5 }
 ```
 
-Example — search by direct skin type and ingredient:
+Example — search by skin type with ingredient fallback to keyword:
 
 ```json
-{ "skinType": "OSPT", "ingredient": "niacinamide", "limit": 10 }
+{ "skinType": "OSPT", "keyword": "niacinamide", "limit": 10 }
 ```
 
 Response:
@@ -364,6 +374,35 @@ Response:
     "La Roche-Posay",
     "Neutrogena"
   ]
+}
+```
+
+---
+
+### get_test_questions
+
+Get all Baumann skin type quiz questions. Input: none.
+
+Returns questions grouped by skin dimension (`O_D`, `S_R`, `P_N`, `W_T`), each with answer options and numeric scores.
+
+Response excerpt:
+
+```json
+{
+  "questions": [
+    {
+      "id": "0",
+      "dimension": "O_D",
+      "question": "How does your skin feel 2–3 hours after cleansing with no products applied?",
+      "options": [
+        { "text": "Tight and dry",        "value": 1 },
+        { "text": "Comfortable",          "value": 2 },
+        { "text": "Slightly shiny",       "value": 3 },
+        { "text": "Very oily and shiny",  "value": 4 }
+      ]
+    }
+  ],
+  "total": 24
 }
 ```
 

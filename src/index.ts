@@ -57,7 +57,7 @@ log('🚀 Initializing SkinGuide MCP Server');
  */
 server.tool(
   'search_products',
-  'Search skincare products based on skin type, product category, budget, vegan status, and ingredients. Returns products with name, brand, price, vegan status, ingredients list, and compatible skin types.',
+  'Search skincare products by type, skin type, brand, budget, keyword, and ingredient. Results are sorted by rating (best-rated first). Returns products with name, brand, price, link, image, and compatible skin types. The response also includes available_without_ingredient_filter when the ingredient filter is used.\n\nIMPORTANT USAGE NOTES:\n- If total=0, the filters were too narrow — retry with fewer filters (remove ingredient, remove budget, etc.).\n- \'ingredient\' requires an exact text match in the stored ingredient list. Many products have incomplete ingredient data, so ingredient searches often return 0. If ingredient returns 0, retry using keyword=<ingredient_name> instead (e.g. keyword="vitamin e").\n- \'skinType\' must be a 4-letter Baumann code such as OSPT, DSPW, ORNW — NOT natural language like "sensitive" or "oily skin".\n- \'keyword\' searches product names and tags and is a reliable fallback for ingredient concepts.\n- When total=0 with an ingredient filter, check available_without_ingredient_filter to see how many products matched the other filters — if > 0, retry with keyword instead of ingredient.',
   {
     type: z
       .enum(PRODUCT_TYPES)
@@ -65,7 +65,7 @@ server.tool(
       .describe('Product category to search for.'),
     skinType: SkinTypeEnum
       .optional()
-      .describe('Direct 4-letter Baumann skin type code. Alternative to using od/sr/pn/wt individually.'),
+      .describe('4-letter Baumann skin type code — must be one of: ORNT, ORNW, ORPT, ORPW, OSNT, OSNW, OSPT, OSPW, DRNT, DRNW, DRPT, DRPW, DSNT, DSNW, DSPT, DSPW. Do NOT use natural language like "sensitive" or "oily".'),
     brand: z
       .string()
       .optional()
@@ -91,11 +91,11 @@ server.tool(
     keyword: z
       .string()
       .optional()
-      .describe("Search keyword to match against product name and search keywords (case-insensitive). E.g., 'acne', 'anti-aging'."),
+      .describe("Search keyword matched against product name and tags (case-insensitive). Use this as a fallback when ingredient returns 0 results. E.g., 'vitamin e', 'retinol', 'acne', 'anti-aging'."),
     ingredient: z
       .string()
       .optional()
-      .describe("Filter by ingredient name (partial match, case-insensitive). E.g., 'retinol', 'hyaluronic acid', 'niacinamide', 'salicylic acid', 'vitamin c'."),
+      .describe("Filter by ingredient name — requires exact text match in the product's ingredient list. Many products have incomplete ingredient data. If this returns 0, check available_without_ingredient_filter and retry with keyword=<ingredient_name> instead."),
     limit: z
       .number()
       .int()

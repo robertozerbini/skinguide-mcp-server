@@ -58,6 +58,7 @@ export interface SearchProductsResult {
     ingredient: string | null;
   };
   products: SkincareProduct[];
+  available_without_ingredient_filter?: number;
 }
 
 export interface SkinTypeInfo {

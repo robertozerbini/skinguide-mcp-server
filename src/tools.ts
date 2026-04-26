@@ -220,6 +220,8 @@ export async function searchProducts(input: unknown = {}): Promise<SearchProduct
       return inName || inKeywords;
     });
   }
+  const countWithoutIngredientFilter = ingredient ? products.length : undefined;
+
   if (ingredient) {
     const ingLower = ingredient.toLowerCase();
     products = products.filter(p =>
@@ -244,6 +246,9 @@ export async function searchProducts(input: unknown = {}): Promise<SearchProduct
       ingredient: ingredient ?? null,
     },
     products,
+    ...(countWithoutIngredientFilter !== undefined && {
+      available_without_ingredient_filter: countWithoutIngredientFilter,
+    }),
   };
 }
 
