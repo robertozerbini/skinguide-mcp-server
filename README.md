@@ -31,6 +31,9 @@
   - [get_routine](#get_routine)
   - [get_brands](#get_brands)
   - [get_test_questions](#get_test_questions)
+  - [submit_test_answers](#submit_test_answers)
+  - [get_product_ingredients](#get_product_ingredients)
+  - [get_ingredient_info](#get_ingredient_info)
 - [Baumann Skin Type System](#baumann-skin-type-system)
 - [AI Agent Integration](#ai-agent-integration)
 - [Direct API Usage (Python)](#direct-api-usage-python)
@@ -65,6 +68,9 @@ AI agents, LLM applications, and developer tools can:
 | `get_routine` | Step-by-step skincare routine for a Baumann skin type (AM/PM, gender) |
 | `get_brands` | All available brands in the database |
 | `get_test_questions` | All Baumann skin type quiz questions (grouped by dimension) |
+| `submit_test_answers` | Submit quiz answers and compute the user's 4-letter skin type code |
+| `get_product_ingredients` | Full enriched ingredient list for a product (by product_id) |
+| `get_ingredient_info` | Detailed info for a cosmetic ingredient (comedogenicity, irritancy, expert take) |
 
 ---
 
@@ -383,7 +389,7 @@ Response:
 
 Get all Baumann skin type quiz questions. Input: none.
 
-Returns questions grouped by skin dimension (`O_D`, `S_R`, `P_N`, `W_T`), each with answer options and numeric scores.
+Returns questions grouped by skin dimension (`O_D`, `S_R`, `P_N`, `W_T`), each with answer options and numeric scores. Use this to guide a user through the skin type assessment before calling `submit_test_answers`.
 
 Response excerpt:
 
@@ -403,6 +409,121 @@ Response excerpt:
     }
   ],
   "total": 24
+}
+```
+
+---
+
+### submit_test_answers
+
+Submit answers for the Baumann skin type test and receive the computed 4-letter skin type code.
+
+> Requires a Firebase ID token passed via the `SKINGUIDE_AUTH_TOKEN` environment variable (or `Authorization: Bearer <token>` in the request). The result is saved to the user's profile.
+
+Input parameters:
+
+| Parameter | Type | Description |
+|---|---|---|
+| `answers` | array | One entry per question: `{ "questionId": "0", "value": 3 }` |
+
+`questionId` is the zero-based string index returned by `get_test_questions`. `value` is the numeric score of the selected option.
+
+Example:
+
+```json
+{
+  "answers": [
+    { "questionId": "0", "value": 3 },
+    { "questionId": "1", "value": 2 }
+  ]
+}
+```
+
+Response:
+
+```json
+{
+  "skinType": "OSPT",
+  "scores": { "O_D": 3.2, "S_R": 2.8, "P_N": 3.5, "W_T": 1.1 },
+  "acne": true,
+  "darkSpots": false
+}
+```
+
+---
+
+### get_product_ingredients
+
+Get the full enriched ingredient list for a specific product.
+
+Input parameters:
+
+| Parameter | Type | Description |
+|---|---|---|
+| `product_id` | string, **required** | The product ID as returned by `search_products` |
+
+Example:
+
+```json
+{ "product_id": "534" }
+```
+
+Response:
+
+```json
+{
+  "product_id": "534",
+  "total": 3,
+  "ingredients": [
+    {
+      "name": "Benzoyl Peroxide",
+      "detail": {
+        "slug": "benzoyl-peroxide",
+        "name": "Benzoyl Peroxide",
+        "description": "An antimicrobial agent that kills acne-causing bacteria.",
+        "comedogenicity": 0,
+        "irritancy": 3,
+        "whatItDoes": ["Antimicrobial", "Keratolytic"],
+        "expertTake": "Highly effective for inflammatory acne but can be drying."
+      }
+    }
+  ]
+}
+```
+
+---
+
+### get_ingredient_info
+
+Look up detailed information about a cosmetic ingredient. Pass `slug` (kebab-case) or `name` (label text) — at least one is required.
+
+Input parameters:
+
+| Parameter | Type | Description |
+|---|---|---|
+| `slug` | string | Kebab-case slug, e.g. `"niacinamide"` or `"hyaluronic-acid"` |
+| `name` | string | Label name, e.g. `"Niacinamide"` or `"Hyaluronic Acid"` |
+
+Example:
+
+```json
+{ "slug": "niacinamide" }
+```
+
+Response:
+
+```json
+{
+  "found": true,
+  "ingredient": {
+    "slug": "niacinamide",
+    "name": "Niacinamide",
+    "description": "A form of vitamin B3 that improves skin barrier function and reduces pigmentation.",
+    "comedogenicity": 0,
+    "irritancy": 0,
+    "whatItDoes": ["Brightening", "Barrier repair", "Pore minimising"],
+    "expertTake": "One of the most versatile and well-tolerated actives for most skin types."
+  }
 }
 ```
 

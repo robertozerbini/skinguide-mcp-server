@@ -133,6 +133,32 @@ export interface SubmitTestAnswersResult {
   darkSpots?: boolean;
 }
 
+export interface IngredientDetail {
+  slug: string;
+  name: string;
+  description?: string;
+  comedogenicity?: number | null;
+  irritancy?: number | null;
+  whatItDoes?: string[];
+  expertTake?: string;
+}
+
+export interface ProductIngredient {
+  name: string;
+  detail?: IngredientDetail;
+}
+
+export interface GetProductIngredientsResult {
+  product_id: string;
+  ingredients: ProductIngredient[];
+  total: number;
+}
+
+export interface GetIngredientInfoResult {
+  ingredient: IngredientDetail | null;
+  found: boolean;
+}
+
 export type SkinTypeImageRace = 'Asian' | 'Black' | 'Latin' | 'White';
 
 export interface SkinTypeImageEntry {

@@ -16,6 +16,9 @@ import type {
   GetTestQuestionsResult,
   SubmitTestAnswerInput,
   SubmitTestAnswersResult,
+  GetProductIngredientsResult,
+  GetIngredientInfoResult,
+  IngredientDetail,
 } from './types.js';
 
 const LIVE_API_URL = process.env.LIVE_API_URL ?? 'https://skinguide.beauty/api';
@@ -443,4 +446,54 @@ export function getSkinTypeImage(
   }
 
   return { skinType: type, images, total: images.length };
+}
+
+/**
+ * Get enriched ingredient list for a specific product
+ */
+export async function getProductIngredients(product_id: string): Promise<GetProductIngredientsResult> {
+  const url = new URL(`${LIVE_API_URL}/products/${encodeURIComponent(product_id)}/ingredients`);
+
+  const res = await fetch(url.toString());
+  if (!res.ok) {
+    throw new Error(`Live API error ${res.status}: ${res.statusText}`);
+  }
+
+  const data = (await res.json()) as { ingredients?: Array<{ name: string; detail?: IngredientDetail }> };
+  const ingredients = data.ingredients ?? [];
+
+  return {
+    product_id,
+    ingredients,
+    total: ingredients.length,
+  };
+}
+
+/**
+ * Look up detailed information about a skincare ingredient
+ */
+export async function getIngredientInfo(slug?: string, name?: string): Promise<GetIngredientInfoResult> {
+  if (!slug && !name) {
+    throw new Error('Provide at least one of: slug or name');
+  }
+
+  const url = new URL(`${LIVE_API_URL}/ingredients`);
+  if (slug) url.searchParams.set('slug', slug);
+  if (name) url.searchParams.set('name', name);
+
+  const res = await fetch(url.toString());
+  if (!res.ok) {
+    if (res.status === 404) {
+      return { ingredient: null, found: false };
+    }
+    throw new Error(`Live API error ${res.status}: ${res.statusText}`);
+  }
+
+  const data = (await res.json()) as { ingredient?: IngredientDetail };
+  const ingredient = data.ingredient ?? null;
+
+  return {
+    ingredient,
+    found: ingredient !== null,
+  };
 }

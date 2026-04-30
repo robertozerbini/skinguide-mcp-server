@@ -24,6 +24,8 @@ import {
   getBrands,
   getTestQuestions,
   submitTestAnswers,
+  getProductIngredients,
+  getIngredientInfo,
 } from './tools.js';
 
 /**
@@ -304,6 +306,63 @@ server.tool(
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       log(`❌ submit_test_answers failed: ${errorMessage}`);
+      return {
+        isError: true,
+        content: [{ type: 'text', text: `Error: ${errorMessage}` }],
+      };
+    }
+  }
+);
+
+/**
+ * Tool: get_product_ingredients
+ */
+server.tool(
+  'get_product_ingredients',
+  'Get the full ingredient list for a specific product, enriched with details from the ingredient catalog (description, comedogenicity, irritancy, what it does). Use the product_id returned by search_products.',
+  {
+    product_id: z.string().describe('The product ID as returned by search_products.'),
+  },
+  async ({ product_id }) => {
+    try {
+      log(`🧪 Executing get_product_ingredients for product: ${product_id}`);
+      const result = await getProductIngredients(product_id);
+      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      log(`❌ get_product_ingredients failed: ${errorMessage}`);
+      return {
+        isError: true,
+        content: [{ type: 'text', text: `Error: ${errorMessage}` }],
+      };
+    }
+  }
+);
+
+/**
+ * Tool: get_ingredient_info
+ */
+server.tool(
+  'get_ingredient_info',
+  'Look up detailed information about a cosmetic/skincare ingredient from the ingredient catalog. Returns description, comedogenicity rating, irritancy rating, what it does, and expert take. Pass either the slug (kebab-case) or the ingredient name as it appears on product labels.',
+  {
+    slug: z
+      .string()
+      .optional()
+      .describe('The ingredient slug (kebab-case), e.g. "niacinamide" or "hyaluronic-acid".'),
+    name: z
+      .string()
+      .optional()
+      .describe('The ingredient name as it appears on product labels, e.g. "Niacinamide" or "Hyaluronic Acid".'),
+  },
+  async ({ slug, name }) => {
+    try {
+      log(`🔬 Executing get_ingredient_info slug=${slug ?? ''} name=${name ?? ''}`);
+      const result = await getIngredientInfo(slug, name);
+      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      log(`❌ get_ingredient_info failed: ${errorMessage}`);
       return {
         isError: true,
         content: [{ type: 'text', text: `Error: ${errorMessage}` }],

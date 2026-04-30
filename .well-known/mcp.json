@@ -136,5 +136,64 @@
         "properties": {}
       }
     },
+    {
+      "name": "submit_test_answers",
+      "description": "Submit answers for the Baumann skin type test and compute the final 4-letter skin type code (e.g. DSNT, ORPW). Requires authentication: pass the Firebase ID token in the Authorization header as 'Bearer <token>'. Saves the result to the user's profile. Returns the skin type code, a score breakdown per dimension, and optional flags for acne and dark spots.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "answers": {
+            "type": "array",
+            "description": "Array of answers, one per question. Each entry contains the questionId (string index) and the selected score value (number).",
+            "items": {
+              "type": "object",
+              "properties": {
+                "questionId": {
+                  "type": "string",
+                  "description": "The question identifier returned by get_test_questions (zero-based index as string, e.g. '0', '1', '2')."
+                },
+                "value": {
+                  "type": "number",
+                  "description": "The numeric score of the chosen answer option."
+                }
+              },
+              "required": ["questionId", "value"]
+            }
+          }
+        },
+        "required": ["answers"]
+      }
+    },
+    {
+      "name": "get_product_ingredients",
+      "description": "Get the full ingredient list for a specific product, enriched with details from the ingredient catalog (description, comedogenicity, irritancy, what it does). Use the product_id returned by search_products.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "product_id": {
+            "type": "string",
+            "description": "The product ID as returned by search_products."
+          }
+        },
+        "required": ["product_id"]
+      }
+    },
+    {
+      "name": "get_ingredient_info",
+      "description": "Look up detailed information about a cosmetic/skincare ingredient from the ingredient catalog. Returns description, comedogenicity rating, irritancy rating, what it does, and expert take. Pass either the slug (kebab-case) or the ingredient name as it appears on product labels.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string",
+            "description": "The ingredient slug (kebab-case), e.g. \"niacinamide\" or \"hyaluronic-acid\"."
+          },
+          "name": {
+            "type": "string",
+            "description": "The ingredient name as it appears on product labels, e.g. \"Niacinamide\" or \"Hyaluronic Acid\"."
+          }
+        }
+      }
+    }
   ]
 }
