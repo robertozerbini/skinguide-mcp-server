@@ -133,6 +133,20 @@ export interface SubmitTestAnswersResult {
   darkSpots?: boolean;
 }
 
+export interface ProductReview {
+  id?: string;
+  rating: number;
+  comment?: string;
+  skinType?: string;
+  date?: string;
+}
+
+export interface GetProductReviewsResult {
+  product_id: string;
+  reviews: ProductReview[];
+  total: number;
+}
+
 export interface IngredientDetail {
   slug: string;
   name: string;

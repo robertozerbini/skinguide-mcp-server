@@ -165,6 +165,29 @@
       }
     },
     {
+      "name": "get_product_reviews",
+      "description": "Get user reviews for a specific product. Returns rating, comment, reviewer skin type, and date. Use the product_id returned by search_products.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "product_id": {
+            "type": "string",
+            "description": "The product ID as returned by search_products."
+          },
+          "sort": {
+            "type": "string",
+            "description": "Sort order: 'recent' (newest first, default) or 'rating' (highest rated first).",
+            "enum": ["recent", "rating"]
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of reviews to return (default 50, max 100)."
+          }
+        },
+        "required": ["product_id"]
+      }
+    },
+    {
       "name": "get_product_ingredients",
       "description": "Get the full ingredient list for a specific product, enriched with details from the ingredient catalog (description, comedogenicity, irritancy, what it does). Use the product_id returned by search_products.",
       "input_schema": {

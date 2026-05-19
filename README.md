@@ -32,6 +32,7 @@
   - [get_brands](#get_brands)
   - [get_test_questions](#get_test_questions)
   - [submit_test_answers](#submit_test_answers)
+  - [get_product_reviews](#get_product_reviews)
   - [get_product_ingredients](#get_product_ingredients)
   - [get_ingredient_info](#get_ingredient_info)
 - [Baumann Skin Type System](#baumann-skin-type-system)
@@ -69,6 +70,7 @@ AI agents, LLM applications, and developer tools can:
 | `get_brands` | All available brands in the database |
 | `get_test_questions` | All Baumann skin type quiz questions (grouped by dimension) |
 | `submit_test_answers` | Submit quiz answers and compute the user's 4-letter skin type code |
+| `get_product_reviews` | User reviews for a product — rating, comment, reviewer skin type, date |
 | `get_product_ingredients` | Full enriched ingredient list for a product (by product_id) |
 | `get_ingredient_info` | Detailed info for a cosmetic ingredient (comedogenicity, irritancy, expert take) |
 
@@ -447,6 +449,49 @@ Response:
   "scores": { "O_D": 3.2, "S_R": 2.8, "P_N": 3.5, "W_T": 1.1 },
   "acne": true,
   "darkSpots": false
+}
+```
+
+---
+
+### get_product_reviews
+
+Get user reviews for a specific product.
+
+Input parameters:
+
+| Parameter | Type | Description |
+|---|---|---|
+| `product_id` | string, **required** | The product ID as returned by `search_products` |
+| `sort` | "recent" or "rating" | Sort order — newest first (default) or highest rated first |
+| `limit` | number | Max reviews to return (default 50, max 100) |
+
+Example:
+
+```json
+{ "product_id": "534", "sort": "rating", "limit": 10 }
+```
+
+Response:
+
+```json
+{
+  "product_id": "534",
+  "total": 2,
+  "reviews": [
+    {
+      "rating": 5,
+      "comment": "Cleared my skin in two weeks.",
+      "skinType": "OSPT",
+      "date": "2024-11-03"
+    },
+    {
+      "rating": 4,
+      "comment": "Effective but a bit drying.",
+      "skinType": "DRNT",
+      "date": "2024-10-15"
+    }
+  ]
 }
 ```
 

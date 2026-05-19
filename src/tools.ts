@@ -19,6 +19,7 @@ import type {
   GetProductIngredientsResult,
   GetIngredientInfoResult,
   IngredientDetail,
+  GetProductReviewsResult,
 } from './types.js';
 
 const LIVE_API_URL = process.env.LIVE_API_URL ?? 'https://skinguide.beauty/api';
@@ -457,6 +458,29 @@ export function getSkinTypeImage(
   }
 
   return { skinType: type, images, total: images.length };
+}
+
+/**
+ * Get user reviews for a specific product
+ */
+export async function getProductReviews(
+  product_id: string,
+  sort?: string,
+  limit?: number
+): Promise<GetProductReviewsResult> {
+  const url = new URL(`${LIVE_API_URL}/products/${encodeURIComponent(product_id)}/reviews`);
+  if (sort) url.searchParams.set('sort', sort);
+  if (limit != null) url.searchParams.set('limit', String(limit));
+
+  const res = await fetch(url.toString());
+  if (!res.ok) {
+    throw new Error(`Live API error ${res.status}: ${res.statusText}`);
+  }
+
+  const data = (await res.json()) as { reviews?: GetProductReviewsResult['reviews'] };
+  const reviews = data.reviews ?? [];
+
+  return { product_id, reviews, total: reviews.length };
 }
 
 /**

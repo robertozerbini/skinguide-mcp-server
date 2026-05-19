@@ -26,6 +26,7 @@ import {
   submitTestAnswers,
   getProductIngredients,
   getIngredientInfo,
+  getProductReviews,
 } from './tools.js';
 
 /**
@@ -306,6 +307,42 @@ server.tool(
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       log(`❌ submit_test_answers failed: ${errorMessage}`);
+      return {
+        isError: true,
+        content: [{ type: 'text', text: `Error: ${errorMessage}` }],
+      };
+    }
+  }
+);
+
+/**
+ * Tool: get_product_reviews
+ */
+server.tool(
+  'get_product_reviews',
+  'Get user reviews for a specific product. Returns rating, comment, reviewer skin type, and date. Use the product_id returned by search_products.',
+  {
+    product_id: z.string().describe('The product ID as returned by search_products.'),
+    sort: z
+      .enum(['recent', 'rating'])
+      .optional()
+      .describe("Sort order: 'recent' (newest first, default) or 'rating' (highest rated first)."),
+    limit: z
+      .number()
+      .int()
+      .min(1)
+      .max(100)
+      .optional()
+      .describe('Maximum number of reviews to return (default 50, max 100).'),
+  },
+  async ({ product_id, sort, limit }) => {
+    try {
+      log(`⭐ Executing get_product_reviews for product: ${product_id}`);
+      const result = await getProductReviews(product_id, sort, limit);
+      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      log(`❌ get_product_reviews failed: ${errorMessage}`);
       return {
         isError: true,
         content: [{ type: 'text', text: `Error: ${errorMessage}` }],
