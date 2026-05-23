@@ -20,6 +20,10 @@ import type {
   GetIngredientInfoResult,
   IngredientDetail,
   GetProductReviewsResult,
+  CompareProductsResult,
+  BuildRoutineResult,
+  RoutineStepWithProducts,
+  CountryCode,
 } from './types.js';
 
 const LIVE_API_URL = process.env.LIVE_API_URL ?? 'https://skinguide.beauty/api';
@@ -143,6 +147,18 @@ export const SKIN_TYPE_CODES = Object.keys(SKIN_TYPES) as SkinType[];
 /**
  * Validation schema for search_products input
  */
+const COUNTRY_CODES = ['US', 'AE'] as const;
+
+/** Normalise country aliases to canonical 2-letter codes */
+function normaliseCountry(raw?: string): CountryCode | undefined {
+  if (!raw) return undefined;
+  const u = raw.toUpperCase().trim();
+  if (u === 'UAE' || u === 'EMIRATES' || u === 'DUBAI') return 'AE';
+  if (u === 'USA' || u === 'AMERICA') return 'US';
+  if ((COUNTRY_CODES as readonly string[]).includes(u)) return u as CountryCode;
+  return undefined;
+}
+
 const SearchProductsInputSchema = z.object({
   type: z.enum(PRODUCT_TYPES).optional(),
   skinType: z.string().optional().describe('Direct 4-letter Baumann skin type code, e.g. OSPT.'),
@@ -154,6 +170,7 @@ const SearchProductsInputSchema = z.object({
   budget: z.number().positive().optional(),
   keyword: z.string().optional().describe('Search keyword to match against product name (case-insensitive).'),
   ingredient: z.string().optional().describe('Filter by ingredient name (partial match, case-insensitive).'),
+  country: z.enum(COUNTRY_CODES).optional().describe('Country code for the product market (US, AE).'),
   limit: z.number().int().min(1).max(50).optional().default(50),
 }).strict();
 
@@ -197,10 +214,11 @@ export async function searchProducts(input: unknown = {}): Promise<SearchProduct
     throw new Error(`Invalid search_products arguments: ${formatValidationError(parsed.error)}`);
   }
 
-  const { type, skinType, brand, od, sr, pn, wt, budget, keyword, ingredient, limit = 50 } = parsed.data;
+  const { type, skinType, brand, od, sr, pn, wt, budget, keyword, ingredient, country, limit = 50 } = parsed.data;
 
   const url = new URL(`${LIVE_API_URL}/products`);
   if (type) url.searchParams.set('type', type);
+  if (country) url.searchParams.set('country', country);
 
   const res = await fetch(url.toString());
   if (!res.ok) {
@@ -265,6 +283,129 @@ export async function searchProducts(input: unknown = {}): Promise<SearchProduct
       available_without_ingredient_filter: countWithoutIngredientFilter,
     }),
   });
+}
+
+/**
+ * Return top-N products of a category for side-by-side comparison
+ */
+export async function compareProducts(params: {
+  type: string;
+  skinType?: string;
+  country?: string;
+  budget?: number;
+  sortBy?: string;
+  limit?: number;
+}): Promise<CompareProductsResult> {
+  const { type, skinType, budget, sortBy = 'rating', limit = 3 } = params;
+  const country = normaliseCountry(params.country);
+  const cappedLimit = Math.min(Math.max(limit, 2), 5);
+
+  const result = await searchProducts({ type: type as typeof PRODUCT_TYPES[number], skinType, country, budget, limit: 50 });
+  let products = result.products;
+
+  if (sortBy === 'price') {
+    products = [...products].sort((a, b) => a.price - b.price);
+  }
+
+  return {
+    type,
+    skinType,
+    country,
+    budget,
+    sortBy,
+    products: products.slice(0, cappedLimit),
+    total: products.slice(0, cappedLimit).length,
+  };
+}
+
+/**
+ * Build a complete skincare routine with product candidates per step
+ */
+export async function buildRoutine(params: {
+  skinType: string;
+  budget?: number;
+  budgetMode?: string;
+  country?: string;
+  sortBy?: string;
+  gender?: string;
+  timeOfDay?: string;
+  limit?: number;
+}): Promise<BuildRoutineResult> {
+  const {
+    skinType,
+    budget,
+    budgetMode = 'per-product',
+    sortBy = 'rating',
+    gender,
+    timeOfDay,
+    limit = 3,
+  } = params;
+  const country = normaliseCountry(params.country);
+  const type = skinType.toUpperCase() as SkinType;
+  const candidatesPerStep = Math.min(Math.max(limit, 1), 5);
+
+  // Fetch routine steps
+  const routineResult = await getRoutine(skinType, gender, timeOfDay);
+
+  // For each step fetch candidate products
+  const stepsWithProducts: RoutineStepWithProducts[] = await Promise.all(
+    routineResult.steps.map(async (step) => {
+      const perProductBudget = budgetMode === 'per-product' ? budget : undefined;
+      const searchResult = await searchProducts({
+        type: step.productType as typeof PRODUCT_TYPES[number],
+        skinType: type,
+        country,
+        budget: perProductBudget,
+        limit: 50,
+      });
+
+      let candidates = searchResult.products;
+      if (sortBy === 'price') {
+        candidates = [...candidates].sort((a, b) => a.price - b.price);
+      }
+      candidates = candidates.slice(0, candidatesPerStep);
+      const lowestPrice = candidates.length > 0 ? Math.min(...candidates.map(p => p.price)) : undefined;
+
+      return { ...step, candidates, lowestPrice };
+    })
+  );
+
+  // Compute estimated min cost
+  const stepPrices = stepsWithProducts
+    .map(s => s.lowestPrice)
+    .filter((p): p is number => p !== undefined);
+
+  let estimatedMinCost: number | undefined;
+  if (stepPrices.length > 0) {
+    const rawTotal = stepPrices.reduce((a, b) => a + b, 0);
+
+    if (budgetMode === 'total' && budget !== undefined) {
+      // Greedy: sort by cheapest step first, allocate until budget exhausted
+      const sorted = [...stepsWithProducts].sort((a, b) => (a.lowestPrice ?? Infinity) - (b.lowestPrice ?? Infinity));
+      let remaining = budget;
+      for (const step of sorted) {
+        if (step.lowestPrice !== undefined && step.lowestPrice <= remaining) {
+          remaining -= step.lowestPrice;
+        } else {
+          step.candidates = step.candidates.filter(c => c.price <= remaining);
+          if (step.candidates.length === 0) step.lowestPrice = undefined;
+        }
+      }
+      estimatedMinCost = parseFloat((budget - remaining).toFixed(2));
+    } else {
+      estimatedMinCost = parseFloat(rawTotal.toFixed(2));
+    }
+  }
+
+  return {
+    skinType: type,
+    country,
+    budgetMode: budgetMode as 'per-product' | 'total',
+    budgetCap: budget,
+    steps: stepsWithProducts,
+    totalSteps: stepsWithProducts.length,
+    estimatedMinCost,
+  };
 }
 
 /**

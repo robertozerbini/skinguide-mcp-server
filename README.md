@@ -35,6 +35,8 @@
   - [get_product_reviews](#get_product_reviews)
   - [get_product_ingredients](#get_product_ingredients)
   - [get_ingredient_info](#get_ingredient_info)
+  - [compare_products](#compare_products)
+  - [build_routine](#build_routine)
 - [Baumann Skin Type System](#baumann-skin-type-system)
 - [AI Agent Integration](#ai-agent-integration)
 - [Direct API Usage (Python)](#direct-api-usage-python)
@@ -73,6 +75,8 @@ AI agents, LLM applications, and developer tools can:
 | `get_product_reviews` | User reviews for a product — rating, comment, reviewer skin type, date |
 | `get_product_ingredients` | Full enriched ingredient list for a product (by product_id) |
 | `get_ingredient_info` | Detailed info for a cosmetic ingredient (comedogenicity, irritancy, expert take) |
+| `compare_products` | Top-N products of a category side-by-side, sorted by rating or price |
+| `build_routine` | Full routine for a skin type with product candidates per step and cost summary |
 
 ---
 
@@ -289,6 +293,7 @@ Input parameters:
 | `keyword` | string | Search keyword matched against product name and tags. Use as fallback when `ingredient` returns 0. |
 | `ingredient` | string | Exact text match against the stored ingredient list. Returns 0 when data is incomplete — use `keyword` instead. |
 | `budget` | number | Maximum price in dollars (use 5, 10, 20, 50, 100, or 101 for over $100) |
+| `country` | "US" or "AE" | Country market filter. Defaults to `US`. Aliases: UAE→AE, USA→US. |
 | `limit` | integer | Max results, 1–50 (default 50) |
 
 When `ingredient` is used, the response includes `available_without_ingredient_filter` — the number of products that matched all other filters before the ingredient check. If that value is > 0 but `total` is 0, retry with `keyword` instead.
@@ -569,6 +574,97 @@ Response:
     "whatItDoes": ["Brightening", "Barrier repair", "Pore minimising"],
     "expertTake": "One of the most versatile and well-tolerated actives for most skin types."
   }
+}
+```
+
+---
+
+### compare_products
+
+Return the top-N products of a given category structured for side-by-side comparison.
+
+Input parameters:
+
+| Parameter | Type | Description |
+|---|---|---|
+| `type` | string, **required** | Product category (same enum as `search_products`) |
+| `skinType` | string | 4-letter Baumann code to filter the pool |
+| `country` | "US" or "AE" | Country market. Defaults to `US`. |
+| `budget` | number | Maximum price per product |
+| `sortBy` | "rating" or "price" | Sort order. Defaults to `rating`. |
+| `limit` | integer 2–5 | Number of products to return. Defaults to 3. |
+
+Example:
+
+```json
+{ "type": "Cleanser", "skinType": "OSPT", "country": "US", "limit": 3 }
+```
+
+Response:
+
+```json
+{
+  "type": "Cleanser",
+  "skinType": "OSPT",
+  "country": "US",
+  "sortBy": "rating",
+  "total": 3,
+  "products": [
+    { "id": 12, "name": "CeraVe Foaming Cleanser", "brand": "CeraVe", "price": 14.99, ... },
+    { "id": 87, "name": "La Roche-Posay Toleriane", "brand": "La Roche-Posay", "price": 18.5, ... },
+    { "id": 34, "name": "Neutrogena Oil-Free Wash", "brand": "Neutrogena", "price": 8.97, ... }
+  ]
+}
+```
+
+---
+
+### build_routine
+
+Build a complete skincare routine for a Baumann skin type with ranked product candidates per step and a cost summary.
+
+Input parameters:
+
+| Parameter | Type | Description |
+|---|---|---|
+| `skinType` | string, **required** | 4-letter Baumann code |
+| `budget` | number | Budget cap (interpretation depends on `budgetMode`) |
+| `budgetMode` | "per-product" or "total" | `per-product` (default) caps each step independently; `total` allocates greedily across all steps |
+| `country` | "US" or "AE" | Country market. Defaults to `US`. |
+| `sortBy` | "rating" or "price" | Candidate sort within each step. Defaults to `rating`. |
+| `gender` | "male" or "female" | Restrict to gendered steps. Omit for all. |
+| `timeOfDay` | "AM" or "PM" | Restrict to morning or evening steps. Omit for both. |
+| `limit` | integer 1–5 | Candidate products per step. Defaults to 3. |
+
+Example — AM routine for OSPT, max $30 per product:
+
+```json
+{ "skinType": "OSPT", "timeOfDay": "AM", "budget": 30, "budgetMode": "per-product", "limit": 2 }
+```
+
+Response:
+
+```json
+{
+  "skinType": "OSPT",
+  "country": "US",
+  "budgetMode": "per-product",
+  "budgetCap": 30,
+  "totalSteps": 4,
+  "estimatedMinCost": 38.93,
+  "steps": [
+    {
+      "step": 1,
+      "productType": "Cleanser",
+      "action": "Cleanse",
+      "timeOfDay": "AM",
+      "lowestPrice": 8.97,
+      "candidates": [
+        { "id": 34, "name": "Neutrogena Oil-Free Wash", "price": 8.97, ... },
+        { "id": 12, "name": "CeraVe Foaming Cleanser", "price": 14.99, ... }
+      ]
+    }
+  ]
 }
 ```
 

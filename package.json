@@ -1,6 +1,6 @@
 {
   "name": "skinguide-mcp-server",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "MCP server for SkinGuide: search skincare products by Baumann skin type, product category, country, and budget. Exposes AI-friendly endpoints for dry, sensitive, and other skin types.",
   "type": "module",
   "main": "dist/index.js",

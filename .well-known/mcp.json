@@ -1,7 +1,7 @@
 {
   "name": "SkinGuide MCP",
   "description": "Search skincare products by Baumann skin type, product category, and budget. Find the perfect products for your skin type among 16 different skin type profiles.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "server": "https://skinguide.beauty/api",
   "homepage": "https://skinguide.beauty",
   "tools": [
@@ -56,6 +56,11 @@
           "ingredient": {
             "type": "string",
             "description": "Filter by ingredient name — requires exact text match in the product's ingredient list. Many products have incomplete ingredient data. If this returns 0, check available_without_ingredient_filter and retry with keyword=<ingredient_name> instead."
+          },
+          "country": {
+            "type": "string",
+            "description": "Country code for the product market. Defaults to 'US' when omitted. Supported codes: US (United States), AE (United Arab Emirates). Aliases accepted: UAE/EMIRATES/DUBAI → AE, USA/AMERICA → US.",
+            "enum": ["US", "AE"]
           },
           "limit": {
             "type": "number",
@@ -216,6 +221,92 @@
             "description": "The ingredient name as it appears on product labels, e.g. \"Niacinamide\" or \"Hyaluronic Acid\"."
           }
         }
+      }
+    },
+    {
+      "name": "compare_products",
+      "description": "Return the top N products of a given category structured for side-by-side comparison. Filters by skin type, country, and budget; sorts by rating (default) or price. Useful when the user asks to compare cleansers, moisturizers, sunscreens, etc.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Product category to compare (e.g. 'Cleanser', 'Moisturizer', 'Sunscreen').",
+            "enum": ["Acne Treatment", "Anti-age Product", "Anti-inflammatory Product", "Antioxidant Serum", "Cleanser", "Eye Cream", "Facial Water", "Foundation", "Mask", "Moisturizer", "Moisturizer Night", "Oil-control Product", "Scrub", "Self-tanning", "Skin Lightener", "Sunscreen"]
+          },
+          "skinType": {
+            "type": "string",
+            "description": "4-letter Baumann skin type code to filter the candidate pool.",
+            "enum": ["ORPW", "ORPT", "ORNW", "ORNT", "OSPW", "OSPT", "OSNW", "OSNT", "DRPW", "DRPT", "DRNW", "DRNT", "DSPW", "DSPT", "DSNW", "DSNT"]
+          },
+          "country": {
+            "type": "string",
+            "description": "Country code for the product market. Defaults to 'US' when omitted. Supported codes: US, AE. Aliases accepted: UAE/EMIRATES/DUBAI → AE, USA/AMERICA → US.",
+            "enum": ["US", "AE"]
+          },
+          "budget": {
+            "type": "number",
+            "description": "Maximum price per product, in the country's local currency."
+          },
+          "sortBy": {
+            "type": "string",
+            "description": "Sort order for the comparison. Defaults to 'rating'.",
+            "enum": ["rating", "price"]
+          },
+          "limit": {
+            "type": "number",
+            "description": "How many products to return (2–5). Defaults to 3."
+          }
+        },
+        "required": ["type"]
+      }
+    },
+    {
+      "name": "build_routine",
+      "description": "Build a complete skincare routine for a Baumann skin type with product recommendations per step. Returns routine steps annotated with candidate products and a cost summary. Supports two budget modes: 'per-product' (each step is independently filtered to ≤ budget) and 'total' (greedy allocation across mandatory steps first, then optional, staying under the total budget).",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "skinType": {
+            "type": "string",
+            "description": "4-letter Baumann skin type code.",
+            "enum": ["ORPW", "ORPT", "ORNW", "ORNT", "OSPW", "OSPT", "OSNW", "OSNT", "DRPW", "DRPT", "DRNW", "DRNT", "DSPW", "DSPT", "DSNW", "DSNT"]
+          },
+          "budget": {
+            "type": "number",
+            "description": "Budget cap in local currency. Interpretation depends on budgetMode."
+          },
+          "budgetMode": {
+            "type": "string",
+            "description": "How 'budget' is applied. 'per-product' caps each step individually (default). 'total' caps the sum across the routine and greedily allocates mandatory steps first.",
+            "enum": ["per-product", "total"]
+          },
+          "country": {
+            "type": "string",
+            "description": "Country code for the product market. Defaults to 'US' when omitted. Supported codes: US, AE. Aliases accepted: UAE/EMIRATES/DUBAI → AE, USA/AMERICA → US.",
+            "enum": ["US", "AE"]
+          },
+          "sortBy": {
+            "type": "string",
+            "description": "Candidate sort order within each step. Defaults to 'rating'.",
+            "enum": ["rating", "price"]
+          },
+          "gender": {
+            "type": "string",
+            "description": "Restrict the routine to gendered steps. Omit to include all.",
+            "enum": ["male", "female"]
+          },
+          "timeOfDay": {
+            "type": "string",
+            "description": "'AM' for morning routine, 'PM' for evening. Omit for both.",
+            "enum": ["AM", "PM"]
+          },
+          "limit": {
+            "type": "number",
+            "description": "How many candidate products to return per step (1–5). Defaults to 3."
+          }
+        },
+        "required": ["skinType"]
       }
     }
   ]

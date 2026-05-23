@@ -29,6 +29,8 @@ export interface SkincareProduct {
   skinTypes: SkinType[];
 }
 
+export type CountryCode = 'US' | 'AE';
+
 export interface SearchProductsParams {
   type?: string;
   brand?: string;
@@ -40,6 +42,7 @@ export interface SearchProductsParams {
   budget?: number;
   keyword?: string;
   ingredient?: string;
+  country?: CountryCode;
   limit?: number;
 }
 
@@ -131,6 +134,36 @@ export interface SubmitTestAnswersResult {
   scores: Record<'O_D' | 'S_R' | 'P_N' | 'W_T', number>;
   acne?: boolean;
   darkSpots?: boolean;
+}
+
+export interface CompareProductsResult {
+  type: string;
+  skinType?: string;
+  country?: CountryCode;
+  budget?: number;
+  sortBy: string;
+  products: SkincareProduct[];
+  total: number;
+}
+
+export interface RoutineStepWithProducts {
+  step: number;
+  productType: string;
+  action: string;
+  timeOfDay: 'AM' | 'PM';
+  gender?: string;
+  candidates: SkincareProduct[];
+  lowestPrice?: number;
+}
+
+export interface BuildRoutineResult {
+  skinType: SkinType;
+  country?: CountryCode;
+  budgetMode: 'per-product' | 'total';
+  budgetCap?: number;
+  steps: RoutineStepWithProducts[];
+  totalSteps: number;
+  estimatedMinCost?: number;
 }
 
 export interface ProductReview {

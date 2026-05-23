@@ -27,6 +27,8 @@ import {
   getProductIngredients,
   getIngredientInfo,
   getProductReviews,
+  compareProducts,
+  buildRoutine,
 } from './tools.js';
 
 /**
@@ -99,6 +101,10 @@ server.tool(
       .string()
       .optional()
       .describe("Filter by ingredient name — requires exact text match in the product's ingredient list. Many products have incomplete ingredient data. If this returns 0, check available_without_ingredient_filter and retry with keyword=<ingredient_name> instead."),
+    country: z
+      .enum(['US', 'AE'])
+      .optional()
+      .describe("Country code for the product market. Defaults to 'US'. Supported: US (United States), AE (United Arab Emirates). Aliases: UAE → AE, USA → US."),
     limit: z
       .number()
       .int()
@@ -311,6 +317,71 @@ server.tool(
         isError: true,
         content: [{ type: 'text', text: `Error: ${errorMessage}` }],
       };
+    }
+  }
+);
+
+/**
+ * Tool: compare_products
+ */
+server.tool(
+  'compare_products',
+  "Return the top N products of a given category structured for side-by-side comparison. Filters by skin type, country, and budget; sorts by rating (default) or price. Useful when the user asks to compare cleansers, moisturizers, sunscreens, etc.",
+  {
+    type: z.enum(PRODUCT_TYPES).describe('Product category to compare.'),
+    skinType: SkinTypeEnum.optional().describe('4-letter Baumann skin type code to filter the candidate pool.'),
+    country: z
+      .enum(['US', 'AE'])
+      .optional()
+      .describe("Country code for the product market. Defaults to 'US'. Aliases accepted: UAE → AE, USA → US."),
+    budget: z.number().positive().optional().describe("Maximum price per product, in the country's local currency."),
+    sortBy: z.enum(['rating', 'price']).optional().describe("Sort order. Defaults to 'rating'."),
+    limit: z.number().int().min(2).max(5).optional().describe('How many products to return (2–5). Defaults to 3.'),
+  },
+  async (params) => {
+    try {
+      log(`🔀 Executing compare_products type=${params.type}`);
+      const result = await compareProducts(params);
+      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      log(`❌ compare_products failed: ${errorMessage}`);
+      return { isError: true, content: [{ type: 'text', text: `Error: ${errorMessage}` }] };
+    }
+  }
+);
+
+/**
+ * Tool: build_routine
+ */
+server.tool(
+  'build_routine',
+  "Build a complete skincare routine for a Baumann skin type with product recommendations per step. Returns routine steps annotated with candidate products and a cost summary. Supports two budget modes: 'per-product' (each step is independently filtered to ≤ budget) and 'total' (greedy allocation across mandatory steps first, then optional, staying under the total budget).",
+  {
+    skinType: SkinTypeEnum.describe('4-letter Baumann skin type code.'),
+    budget: z.number().positive().optional().describe('Budget cap in local currency. Interpretation depends on budgetMode.'),
+    budgetMode: z
+      .enum(['per-product', 'total'])
+      .optional()
+      .describe("How 'budget' is applied. 'per-product' caps each step individually (default). 'total' caps the sum across the routine."),
+    country: z
+      .enum(['US', 'AE'])
+      .optional()
+      .describe("Country code for the product market. Defaults to 'US'. Aliases accepted: UAE → AE, USA → US."),
+    sortBy: z.enum(['rating', 'price']).optional().describe("Candidate sort order within each step. Defaults to 'rating'."),
+    gender: z.enum(['male', 'female']).optional().describe('Restrict the routine to gendered steps. Omit to include all.'),
+    timeOfDay: z.enum(['AM', 'PM']).optional().describe("'AM' for morning routine, 'PM' for evening. Omit for both."),
+    limit: z.number().int().min(1).max(5).optional().describe('How many candidate products to return per step (1–5). Defaults to 3.'),
+  },
+  async (params) => {
+    try {
+      log(`🏗️  Executing build_routine skinType=${params.skinType}`);
+      const result = await buildRoutine(params);
+      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      log(`❌ build_routine failed: ${errorMessage}`);
+      return { isError: true, content: [{ type: 'text', text: `Error: ${errorMessage}` }] };
     }
   }
 );
