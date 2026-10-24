@@ -199,20 +199,20 @@ export interface GetProductReviewsResult {
   total: number;
 }
 
-/** Shape returned by the ingredientInfo Cloud Function (values are strings on the wire). */
+/**
+ * Structured ingredient fields passed through from the ingredient catalog.
+ * Prose fields (description, quick_facts) are INCIDecoder's text and are
+ * deliberately excluded.
+ */
 export interface IngredientDetail {
-  id?: string;
-  slug: string;
   name: string;
-  description?: string;
-  quick_facts?: string;
-  our_take?: string;
-  comedogenicity?: string | number | null;
-  irritancy?: string | number | null;
+  slug: string;
+  also_called?: string;
   what_it_does?: string;
   all_functions?: string;
-  also_called?: string;
-  aliases?: string[] | string;
+  comedogenicity?: string | number | null;
+  irritancy?: string | number | null;
+  our_take?: string;
   source_url?: string;
 }
 
@@ -223,6 +223,7 @@ export interface ProductIngredient {
 
 export interface GetProductIngredientsResult {
   product_id: string;
+  _data_credit?: string;
   ingredients: ProductIngredient[];
   total: number;
 }
@@ -230,6 +231,8 @@ export interface GetProductIngredientsResult {
 export interface GetIngredientInfoResult {
   ingredient: IngredientDetail | null;
   found: boolean;
+  /** Says which data came from INCIDecoder; present when an ingredient is found. */
+  _data_credit?: string;
 }
 
 export type SkinTypeImageRace = 'Asian' | 'Black' | 'Latin' | 'White';

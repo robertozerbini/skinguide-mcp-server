@@ -73,8 +73,8 @@ AI agents, LLM applications, and developer tools can:
 | `get_test_questions` | All Baumann skin type quiz questions (grouped by dimension) |
 | `submit_test_answers` | Submit quiz answers and compute the user's 4-letter skin type code |
 | `get_product_reviews` | User reviews for a product — rating, comment, reviewer skin type, date |
-| `get_product_ingredients` | Full enriched ingredient list for a product (by product_id) |
-| `get_ingredient_info` | Detailed info for a cosmetic ingredient (comedogenicity, irritancy, expert take) |
+| `get_product_ingredients` | Ingredient list (INCI names) for a product (by product_id) |
+| `get_ingredient_info` | Structured facts for a cosmetic ingredient (functions, comedogenicity, irritancy), credited to Incidecoder |
 | `compare_products` | Top-N products of a category side-by-side, sorted by rating or price |
 | `build_routine` | Full routine for a skin type with product candidates per step and cost summary |
 
@@ -523,7 +523,7 @@ Response:
 
 Get the full ingredient list for a specific product. Source: the `productIngredients` Cloud Function (`…cloudfunctions.net/productIngredients?product_id=<id>`).
 
-> Each entry can carry a `detail` object from the ingredient catalog, but at the time of writing the live function returns names only. Use `get_ingredient_info` for details.
+> At the time of writing the live function returns ingredient names only. If an entry ever carries a `detail` object, the server passes through only the same structured fields as `get_ingredient_info` (never prose) and adds a `_data_credit`. Use `get_ingredient_info` for an ingredient's functions and ratings.
 
 Input parameters:
 
@@ -555,6 +555,8 @@ Response (excerpt):
 
 Look up detailed information about a cosmetic ingredient. Pass `slug` (kebab-case) or `name` (label text); at least one is required. Source: the `ingredientInfo` Cloud Function (`…cloudfunctions.net/ingredientInfo?name=<name>` or `?slug=<slug>`). An unknown ingredient returns `found: false`.
 
+> **Data credit.** Only structured fields are returned: functions, comedogenicity, irritancy, the editorial rating (`our_take`), and also-called names. They come from [Incidecoder](https://incidecoder.com) (now INKEEDecoder), and `_data_credit` says so. The catalog's prose `description` and `quick_facts` are Incidecoder's text and are deliberately **not** returned. This follows skinguide.beauty's own rule: "Functions and safety ratings sourced from Incidecoder." When you present these fields, credit Incidecoder with the `source_url`.
+
 Input parameters:
 
 | Parameter | Type | Description |
@@ -574,18 +576,19 @@ Response:
 {
   "found": true,
   "ingredient": {
-    "id": "niacinamide",
-    "slug": "niacinamide",
     "name": "Niacinamide",
+    "slug": "niacinamide",
     "also_called": "vitamin B3, nicotinamide",
-    "quick_facts": "A multi-functional skincare superstar with several proven benefits for the skin | ...",
     "what_it_does": "cell-communicating ingredient, skin brightening, anti-acne, ...",
+    "all_functions": "smoothing",
+    "comedogenicity": null,
+    "irritancy": null,
     "our_take": "superstar",
-    "comedogenicity": "None",
-    "irritancy": "None",
-    "description": "Niacinamide, or as us normal people call it vitamin B3, is a ...",
     "source_url": "https://incidecoder.com/ingredients/niacinamide"
-  }
+  },
+  "_data_credit": "Functions and safety ratings sourced from Incidecoder (now INKEEDecoder): https://incidecoder.com/ingredients/niacinamide. Ingredient descriptions are not included.",
+  "_source": "skinguide.beauty",
+  "_note": "Ingredient data is served by skinguide.beauty, but these fields come from Incidecoder (INKEEDecoder). ..."
 }
 ```
 

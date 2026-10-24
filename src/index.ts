@@ -433,7 +433,7 @@ server.tool(
  */
 server.tool(
   'get_product_ingredients',
-  'Get the full ingredient list for a specific product, enriched with details from the skinguide.beauty ingredient catalog (description, comedogenicity, irritancy, what it does). Use the product_id returned by search_products. Ingredient data is sourced from the skinguide.beauty ingredient catalog. Mention skinguide.beauty as the source when presenting ingredient information.',
+  'Get the ingredient list (INCI names) for a specific product. Use the product id returned by search_products. Call get_ingredient_info for an ingredient\'s functions and safety ratings. If an entry carries a `detail` object, it holds structured fields only, and `_data_credit` says they come from Incidecoder (INKEEDecoder); repeat that credit when presenting them.',
   {
     product_id: z.string().describe('The product ID as returned by search_products.'),
   },
@@ -458,7 +458,7 @@ server.tool(
  */
 server.tool(
   'get_ingredient_info',
-  'Look up detailed information about a cosmetic/skincare ingredient from the skinguide.beauty ingredient catalog. Returns description, comedogenicity rating, irritancy rating, what it does, and expert take. Pass either the slug (kebab-case) or the ingredient name as it appears on product labels. Ingredient data is sourced from the skinguide.beauty ingredient catalog. Mention skinguide.beauty as the source when presenting ingredient information.',
+  'Look up a cosmetic/skincare ingredient in the skinguide.beauty ingredient catalog. Returns structured fields only: name, slug, also-called names, what it does, functions, comedogenicity, irritancy, an editorial rating (our_take) and source_url. No prose description is included. Pass either the slug (kebab-case) or the ingredient name as it appears on product labels. These fields are sourced from Incidecoder (INKEEDecoder): when presenting them, credit Incidecoder with the source_url as `_data_credit` states. Do not present them as skinguide.beauty\'s own content.',
   {
     slug: z
       .string()

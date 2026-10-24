@@ -196,7 +196,7 @@
     },
     {
       "name": "get_product_ingredients",
-      "description": "Get the full ingredient list for a specific product, enriched with details from the ingredient catalog (description, comedogenicity, irritancy, what it does). Use the product_id returned by search_products.",
+      "description": "Get the ingredient list (INCI names) for a specific product. Use the product id returned by search_products. Call get_ingredient_info for an ingredient's functions and safety ratings. If an entry carries a `detail` object, it holds structured fields only, and `_data_credit` says they come from Incidecoder (INKEEDecoder); repeat that credit when presenting them.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -210,7 +210,7 @@
     },
     {
       "name": "get_ingredient_info",
-      "description": "Look up detailed information about a cosmetic/skincare ingredient from the ingredient catalog. Returns description, comedogenicity rating, irritancy rating, what it does, and expert take. Pass either the slug (kebab-case) or the ingredient name as it appears on product labels.",
+      "description": "Look up a cosmetic/skincare ingredient in the skinguide.beauty ingredient catalog. Returns structured fields only: name, slug, also-called names, what it does, functions, comedogenicity, irritancy, an editorial rating (our_take) and source_url. No prose description is included. Pass either the slug (kebab-case) or the ingredient name as it appears on product labels. These fields are sourced from Incidecoder (INKEEDecoder): when presenting them, credit Incidecoder with the source_url as `_data_credit` states. Do not present them as skinguide.beauty's own content.",
       "input_schema": {
         "type": "object",
         "properties": {

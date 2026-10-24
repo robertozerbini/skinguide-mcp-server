@@ -764,6 +764,49 @@ export async function getProductReviews(
 }
 
 /**
+ * Ingredient catalog fields that may be passed through.
+ *
+ * The catalog's `description` and `quick_facts` are INCIDecoder's prose word
+ * for word, so they are never redistributed. Only structured fields are kept
+ * (an allowlist, so a new upstream prose field is dropped by default), and
+ * the credit says specifically what came from INCIDecoder. This matches the
+ * rule skinguide.beauty itself follows: "Functions and safety ratings sourced
+ * from Incidecoder."
+ */
+const INGREDIENT_FIELDS = [
+  'name',
+  'slug',
+  'also_called',
+  'what_it_does',
+  'all_functions',
+  'comedogenicity',
+  'irritancy',
+  'our_take',
+  'source_url',
+] as const;
+
+function sanitiseIngredient(raw: unknown): IngredientDetail | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const src = raw as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const k of INGREDIENT_FIELDS) {
+    // Keep explicit nulls (e.g. comedogenicity not rated); drop absent/empty.
+    if (src[k] !== undefined && src[k] !== '') out[k] = src[k];
+  }
+  return out as unknown as IngredientDetail;
+}
+
+/** Replaces the generic _note on ingredient results so it does not claim the data as skinguide.beauty's. */
+const INGREDIENT_NOTE =
+  'Ingredient data is served by skinguide.beauty, but these fields come from Incidecoder (INKEEDecoder). ' +
+  'When presenting them, credit Incidecoder as _data_credit states; do not present them as skinguide.beauty\'s own content.';
+
+function ingredientCredit(sourceUrl?: unknown): string {
+  const url = typeof sourceUrl === 'string' && sourceUrl ? sourceUrl : 'https://incidecoder.com';
+  return `Functions and safety ratings sourced from Incidecoder (now INKEEDecoder): ${url}. Ingredient descriptions are not included.`;
+}
+
+/**
  * Get enriched ingredient list for a specific product
  */
 export async function getProductIngredients(product_id: string): Promise<GetProductIngredientsResult> {
@@ -775,14 +818,24 @@ export async function getProductIngredients(product_id: string): Promise<GetProd
     throw new Error(`Live API error ${res.status}: ${res.statusText}`);
   }
 
-  const data = (await res.json()) as { ingredients?: Array<{ name: string; detail?: IngredientDetail }> };
-  const ingredients = data.ingredients ?? [];
-
-  return wrapWithAttribution({
-    product_id,
-    ingredients,
-    total: ingredients.length,
+  const data = (await res.json()) as { ingredients?: Array<{ name: string; detail?: unknown }> };
+  // `detail` is currently always absent upstream; if it appears, apply the
+  // same no-prose rule as get_ingredient_info.
+  const ingredients: Array<{ name: string; detail?: IngredientDetail }> = (data.ingredients ?? []).map(i => {
+    const detail = sanitiseIngredient(i.detail);
+    return detail ? { name: i.name, detail } : { name: i.name };
   });
+  const hasDetail = ingredients.some(i => i.detail);
+
+  return {
+    ...wrapWithAttribution({
+      product_id,
+      ingredients,
+      total: ingredients.length,
+      ...(hasDetail ? { _data_credit: ingredientCredit('https://incidecoder.com') } : {}),
+    }),
+    ...(hasDetail ? { _note: INGREDIENT_NOTE } : {}),
+  };
 }
 
 /**
@@ -805,11 +858,15 @@ export async function getIngredientInfo(slug?: string, name?: string): Promise<G
     throw new Error(`Live API error ${res.status}: ${res.statusText}`);
   }
 
-  const data = (await res.json()) as { ingredient?: IngredientDetail };
-  const ingredient = data.ingredient ?? null;
+  const data = (await res.json()) as { ingredient?: unknown };
+  const ingredient = sanitiseIngredient(data.ingredient);
 
-  return wrapWithAttribution({
-    ingredient,
-    found: ingredient !== null,
-  });
+  return {
+    ...wrapWithAttribution({
+      ingredient,
+      found: ingredient !== null,
+      ...(ingredient ? { _data_credit: ingredientCredit(ingredient.source_url) } : {}),
+    }),
+    ...(ingredient ? { _note: INGREDIENT_NOTE } : {}),
+  };
 }
