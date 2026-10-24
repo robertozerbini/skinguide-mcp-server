@@ -30,6 +30,13 @@
   - [search_products](#search_products)
   - [get_routine](#get_routine)
   - [get_brands](#get_brands)
+  - [get_test_questions](#get_test_questions)
+  - [submit_test_answers](#submit_test_answers)
+  - [get_product_reviews](#get_product_reviews)
+  - [get_product_ingredients](#get_product_ingredients)
+  - [get_ingredient_info](#get_ingredient_info)
+  - [compare_products](#compare_products)
+  - [build_routine](#build_routine)
 - [Baumann Skin Type System](#baumann-skin-type-system)
 - [AI Agent Integration](#ai-agent-integration)
 - [Direct API Usage (Python)](#direct-api-usage-python)
@@ -63,6 +70,13 @@ AI agents, LLM applications, and developer tools can:
 | `get_product_types` | All available product categories |
 | `get_routine` | Step-by-step skincare routine for a Baumann skin type (AM/PM, gender) |
 | `get_brands` | All available brands in the database |
+| `get_test_questions` | All Baumann skin type quiz questions (grouped by dimension) |
+| `submit_test_answers` | Submit quiz answers and compute the user's 4-letter skin type code |
+| `get_product_reviews` | User reviews for a product — rating, comment, reviewer skin type, date |
+| `get_product_ingredients` | Full enriched ingredient list for a product (by product_id) |
+| `get_ingredient_info` | Detailed info for a cosmetic ingredient (comedogenicity, irritancy, expert take) |
+| `compare_products` | Top-N products of a category side-by-side, sorted by rating or price |
+| `build_routine` | Full routine for a skin type with product candidates per step and cost summary |
 
 ---
 
@@ -230,18 +244,24 @@ List all available product categories. Input: none.
 ```json
 {
   "productTypes": [
+    { "id": "Acne Treatment" },
+    { "id": "Anti-age Product" },
+    { "id": "Anti-inflammatory Product" },
+    { "id": "Antioxidant Serum" },
     { "id": "Cleanser" },
-    { "id": "Moisturizer" },
-    { "id": "Serum" },
-    { "id": "Sunscreen" },
-    { "id": "Toner" },
     { "id": "Eye Cream" },
-    { "id": "Face Mask" },
-    { "id": "Exfoliator" },
-    { "id": "Face Oil" },
-    { "id": "Treatment" }
+    { "id": "Facial Water" },
+    { "id": "Foundation" },
+    { "id": "Mask" },
+    { "id": "Moisturizer" },
+    { "id": "Moisturizer Night" },
+    { "id": "Oil-control Product" },
+    { "id": "Scrub" },
+    { "id": "Self-tanning" },
+    { "id": "Skin Lightener" },
+    { "id": "Sunscreen" }
   ],
-  "total": 10
+  "total": 16
 }
 ```
 
@@ -263,34 +283,37 @@ Response:
 
 ### search_products
 
+> **Tip:** If `total=0`, retry with fewer filters. If `ingredient` returns 0, try `keyword=<ingredient_name>` instead — many products have incomplete ingredient data. `skinType` must be a 4-letter Baumann code (e.g. `OSPT`), not natural language.
+
 Input parameters:
 
 | Parameter | Type | Description |
 |---|---|---|
-| `type` | string | Product category: `Cleanser`, `Moisturizer`, `Serum`, `Sunscreen`, `Toner`, `Eye Cream`, `Face Mask`, `Exfoliator`, `Face Oil`, `Treatment` |
-| `skinType` | string | Direct 4-letter Baumann code, e.g. `OSPT`. Alternative to using axes individually. |
+| `type` | string | Product category — one of the 16 values returned by `get_product_types` |
+| `skinType` | string | 4-letter Baumann code, e.g. `OSPT`. Do NOT use natural language like "oily". |
 | `od` | "O" or "D" | Oily or Dry axis |
 | `sr` | "S" or "R" | Sensitive or Resistant axis |
 | `pn` | "P" or "N" | Pigmented or Non-pigmented axis |
 | `wt` | "W" or "T" | Wrinkled or Tight axis |
 | `brand` | string | Filter by brand name (partial match, case-insensitive). E.g. `CeraVe`, `La Roche`. |
-| `keyword` | string | Search keyword matched against product name (case-insensitive). E.g. `acne`, `anti-aging`. |
-| `ingredient` | string | Filter by ingredient (partial match, case-insensitive). E.g. `retinol`, `hyaluronic acid`. |
+| `keyword` | string | Search keyword matched against product name and tags. Use as fallback when `ingredient` returns 0. |
+| `ingredient` | string | Exact text match against the stored ingredient list. Returns 0 when data is incomplete — use `keyword` instead. |
 | `budget` | number | Maximum price in dollars (use 5, 10, 20, 50, 100, or 101 for over $100) |
+| `country` | "US" or "AE" | Country market filter. Defaults to `US`. Aliases: UAE→AE, USA→US. |
 | `limit` | integer | Max results, 1–50 (default 50) |
 
-Example — oily + sensitive skin (`od=O`, `sr=S`), budget $30:
+When `ingredient` is used, the response includes `available_without_ingredient_filter` — the number of products that matched all other filters before the ingredient check. If that value is > 0 but `total` is 0, retry with `keyword` instead.
 
-Arguments:
+Example — oily + sensitive skin (`od=O`, `sr=S`), budget $30:
 
 ```json
 { "od": "O", "sr": "S", "budget": 30, "limit": 5 }
 ```
 
-Example — search by direct skin type and ingredient:
+Example — search by skin type with ingredient fallback to keyword:
 
 ```json
-{ "skinType": "OSPT", "ingredient": "niacinamide", "limit": 10 }
+{ "skinType": "OSPT", "keyword": "niacinamide", "limit": 10 }
 ```
 
 Response:
@@ -344,6 +367,9 @@ Response:
 ```json
 {
   "skinType": "OSPT",
+  "title": "...",
+  "url": "https://skinguide.beauty/routine/OSPT",
+  "routineDescription": "...",
   "total": 4,
   "steps": [
     { "step": 1, "productType": "Cleanser",    "action": "Cleanse",          "timeOfDay": "AM" },
@@ -376,6 +402,280 @@ Response (unfiltered):
     "Clean & Clear",
     "La Roche-Posay",
     "Neutrogena"
+  ]
+}
+```
+
+---
+
+### get_test_questions
+
+Get all Baumann skin type quiz questions. Input: none.
+
+Returns the 15 questions, each tagged with its skin dimension (`section`: `O_D`, `S_R`, `P_N`, `W_T`) and answer options with numeric scores. Source: `GET https://skinguide.beauty/api/testQuestions`.
+
+Response excerpt:
+
+```json
+{
+  "questions": [
+    {
+      "id": "0",
+      "section": "O_D",
+      "text": "How does your skin generally feel and look throughout the day (including after cleansing, without moisturizer, facial shine, and pore visibility)?",
+      "options": [
+        { "text": "Very Dry: Feels very dry, flaky, or cracks without moisturizer; ...", "score": 8 },
+        { "text": "Balanced: Feels tight but not flaky, ...", "score": 16 }
+      ]
+    }
+  ],
+  "total": 15,
+  "sections": ["O_D", "S_R", "P_N", "W_T"],
+  "sectionLabels": { "O_D": "Oily vs. Dry", "S_R": "Sensitive vs. Resistant", "P_N": "Pigmented vs. Non-Pigmented", "W_T": "Wrinkled vs. Tight" }
+}
+```
+
+---
+
+### submit_test_answers
+
+Submit answers for the Baumann skin type test and receive the computed 4-letter skin type code.
+
+> **Requires a signed-in SkinGuide account.** The live endpoint (`POST https://skinguide.beauty/api/submitTestAnswers`) returns 401 without a Firebase ID token and saves the result to that user's profile. The server reads the token from the `SKINGUIDE_AUTH_TOKEN` environment variable. Without it the tool returns an error that sends the user to [skinguide.beauty](https://skinguide.beauty) to take the test. The score-to-type thresholds are stored server-side, so the tool does not compute the type locally.
+
+Input parameters:
+
+| Parameter | Type | Description |
+|---|---|---|
+| `answers` | array | One entry per question: `{ "questionId": "0", "value": 3 }` |
+
+Send all 15 answers. `questionId` is the `id` returned by `get_test_questions`, and `value` is the `score` of the selected option.
+
+Example:
+
+```json
+{
+  "answers": [
+    { "questionId": "0", "value": 3 },
+    { "questionId": "1", "value": 2 }
+  ]
+}
+```
+
+Response:
+
+```json
+{
+  "skinType": "OSPT",
+  "scores": { "O_D": 3.2, "S_R": 2.8, "P_N": 3.5, "W_T": 1.1 },
+  "acne": true,
+  "darkSpots": false
+}
+```
+
+---
+
+### get_product_reviews
+
+Get user reviews for a specific product. Source: the `productReviews` Cloud Function (`https://us-central1-vanity-e971f.cloudfunctions.net/productReviews?product_id=<id>`), because reviews are not behind the `skinguide.beauty/api` routes.
+
+> `sort=rating` currently fails upstream (HTTP 500). When that happens the tool fetches reviews newest-first, sorts them by rating locally, and adds a `_note` saying so.
+
+Input parameters:
+
+| Parameter | Type | Description |
+|---|---|---|
+| `product_id` | string, **required** | The product ID as returned by `search_products` |
+| `sort` | "recent" or "rating" | Sort order — newest first (default) or highest rated first |
+| `limit` | number | Max reviews to return (default 50, max 100) |
+
+Example:
+
+```json
+{ "product_id": "0be8e8e29fe881af821bed6979799c32", "limit": 10 }
+```
+
+Response:
+
+```json
+{
+  "product_id": "0be8e8e29fe881af821bed6979799c32",
+  "product_name": null,
+  "avg_rating": null,
+  "review_count": null,
+  "total": 1,
+  "reviews": [
+    {
+      "reviewId": "0be8e8e29fe881af821bed6979799c32_...",
+      "rating": 5,
+      "comment": "I have dry, slightly sensitive skin, and this Hydro Jelly Fruit Mask was such a pleasant surprise...",
+      "userSkinType": "DSNW",
+      "userAgeRange": "35–44",
+      "createdAt": "2026-05-05T03:27:45.446Z"
+    }
+  ]
+}
+```
+
+---
+
+### get_product_ingredients
+
+Get the full ingredient list for a specific product. Source: the `productIngredients` Cloud Function (`…cloudfunctions.net/productIngredients?product_id=<id>`).
+
+> Each entry can carry a `detail` object from the ingredient catalog, but at the time of writing the live function returns names only. Use `get_ingredient_info` for details.
+
+Input parameters:
+
+| Parameter | Type | Description |
+|---|---|---|
+| `product_id` | string, **required** | The product ID as returned by `search_products` |
+
+Example:
+
+```json
+{ "product_id": "f839d81fabc8bfd2662226c7579738a7" }
+```
+
+Response (excerpt):
+
+```json
+{
+  "product_id": "f839d81fabc8bfd2662226c7579738a7",
+  "total": 74,
+  "ingredients": [
+    { "name": "Aqua" }
+  ]
+}
+```
+
+---
+
+### get_ingredient_info
+
+Look up detailed information about a cosmetic ingredient. Pass `slug` (kebab-case) or `name` (label text); at least one is required. Source: the `ingredientInfo` Cloud Function (`…cloudfunctions.net/ingredientInfo?name=<name>` or `?slug=<slug>`). An unknown ingredient returns `found: false`.
+
+Input parameters:
+
+| Parameter | Type | Description |
+|---|---|---|
+| `slug` | string | Kebab-case slug, e.g. `"niacinamide"` or `"hyaluronic-acid"` |
+| `name` | string | Label name, e.g. `"Niacinamide"` or `"Hyaluronic Acid"` |
+
+Example:
+
+```json
+{ "slug": "niacinamide" }
+```
+
+Response:
+
+```json
+{
+  "found": true,
+  "ingredient": {
+    "id": "niacinamide",
+    "slug": "niacinamide",
+    "name": "Niacinamide",
+    "also_called": "vitamin B3, nicotinamide",
+    "quick_facts": "A multi-functional skincare superstar with several proven benefits for the skin | ...",
+    "what_it_does": "cell-communicating ingredient, skin brightening, anti-acne, ...",
+    "our_take": "superstar",
+    "comedogenicity": "None",
+    "irritancy": "None",
+    "description": "Niacinamide, or as us normal people call it vitamin B3, is a ...",
+    "source_url": "https://incidecoder.com/ingredients/niacinamide"
+  }
+}
+```
+
+---
+
+### compare_products
+
+Return the top-N products of a given category structured for side-by-side comparison.
+
+Input parameters:
+
+| Parameter | Type | Description |
+|---|---|---|
+| `type` | string, **required** | Product category (same enum as `search_products`) |
+| `skinType` | string | 4-letter Baumann code to filter the pool |
+| `country` | "US" or "AE" | Country market. Defaults to `US`. |
+| `budget` | number | Maximum price per product |
+| `sortBy` | "rating" or "price" | Sort order. Defaults to `rating`. |
+| `limit` | integer 2–5 | Number of products to return. Defaults to 3. |
+
+Example:
+
+```json
+{ "type": "Cleanser", "skinType": "OSPT", "country": "US", "limit": 3 }
+```
+
+Response:
+
+```json
+{
+  "type": "Cleanser",
+  "skinType": "OSPT",
+  "country": "US",
+  "sortBy": "rating",
+  "total": 3,
+  "products": [
+    { "id": 12, "name": "CeraVe Foaming Cleanser", "brand": "CeraVe", "price": 14.99, ... },
+    { "id": 87, "name": "La Roche-Posay Toleriane", "brand": "La Roche-Posay", "price": 18.5, ... },
+    { "id": 34, "name": "Neutrogena Oil-Free Wash", "brand": "Neutrogena", "price": 8.97, ... }
+  ]
+}
+```
+
+---
+
+### build_routine
+
+Build a complete skincare routine for a Baumann skin type with ranked product candidates per step and a cost summary.
+
+Input parameters:
+
+| Parameter | Type | Description |
+|---|---|---|
+| `skinType` | string, **required** | 4-letter Baumann code |
+| `budget` | number | Budget cap (interpretation depends on `budgetMode`) |
+| `budgetMode` | "per-product" or "total" | `per-product` (default) caps each step independently; `total` allocates greedily across all steps |
+| `country` | "US" or "AE" | Country market. Defaults to `US`. |
+| `sortBy` | "rating" or "price" | Candidate sort within each step. Defaults to `rating`. |
+| `gender` | "male" or "female" | Restrict to gendered steps. Omit for all. |
+| `timeOfDay` | "AM" or "PM" | Restrict to morning or evening steps. Omit for both. |
+| `limit` | integer 1–5 | Candidate products per step. Defaults to 3. |
+
+Example — AM routine for OSPT, max $30 per product:
+
+```json
+{ "skinType": "OSPT", "timeOfDay": "AM", "budget": 30, "budgetMode": "per-product", "limit": 2 }
+```
+
+Response:
+
+```json
+{
+  "skinType": "OSPT",
+  "country": "US",
+  "budgetMode": "per-product",
+  "budgetCap": 30,
+  "totalSteps": 4,
+  "estimatedMinCost": 38.93,
+  "steps": [
+    {
+      "step": 1,
+      "productType": "Cleanser",
+      "action": "Cleanse",
+      "timeOfDay": "AM",
+      "lowestPrice": 8.97,
+      "candidates": [
+        { "id": 34, "name": "Neutrogena Oil-Free Wash", "price": 8.97, ... },
+        { "id": 12, "name": "CeraVe Foaming Cleanser", "price": 14.99, ... }
+      ]
+    }
   ]
 }
 ```

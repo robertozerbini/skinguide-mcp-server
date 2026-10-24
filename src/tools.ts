@@ -16,9 +16,34 @@ import type {
   GetTestQuestionsResult,
   SubmitTestAnswerInput,
   SubmitTestAnswersResult,
+  GetProductIngredientsResult,
+  GetIngredientInfoResult,
+  IngredientDetail,
+  GetProductReviewsResult,
+  CompareProductsResult,
+  BuildRoutineResult,
+  RoutineStepWithProducts,
+  CountryCode,
 } from './types.js';
 
 const LIVE_API_URL = process.env.LIVE_API_URL ?? 'https://skinguide.beauty/api';
+
+/**
+ * Reviews, product ingredients and ingredient info are not behind the
+ * skinguide.beauty/api Hosting rewrites; they are served only as direct
+ * Cloud Functions URLs.
+ */
+const FUNCTIONS_URL = process.env.SKINGUIDE_FUNCTIONS_URL ?? 'https://us-central1-vanity-e971f.cloudfunctions.net';
+
+const ATTRIBUTION = {
+  _source: 'skinguide.beauty',
+  _website: 'https://skinguide.beauty',
+  _note: 'Data provided by skinguide.beauty. When presenting products, always include the product link URL. When presenting skin type info or routines, attribute them to skinguide.beauty.',
+} as const;
+
+function wrapWithAttribution<T extends object>(result: T): T & typeof ATTRIBUTION {
+  return { ...result, ...ATTRIBUTION };
+}
 
 /**
  * All available product categories
@@ -87,8 +112,8 @@ export async function submitTestAnswers(
     throw new Error(
       'submit_test_answers requires a signed-in SkinGuide account: the live API only scores answers ' +
         'for an authenticated user and saves the result to their profile. Take the free skin type test at ' +
-        'https://skinguide.beauty, then use the resulting 4-letter code with get_skin_type_info, get_routine ' +
-        'and search_products. (Advanced: set SKINGUIDE_AUTH_TOKEN to a Firebase ID token to submit from here.)'
+        'https://skinguide.beauty, then use the resulting 4-letter code with get_skin_type_info, get_routine, ' +
+        'build_routine and search_products. (Advanced: set SKINGUIDE_AUTH_TOKEN to a Firebase ID token to submit from here.)'
     );
   }
 
@@ -113,7 +138,7 @@ export async function submitTestAnswers(
     throw new Error(`Unable to submit test answers. Live API error ${res.status}: ${detail}`);
   }
 
-  return (await res.json()) as SubmitTestAnswersResult;
+  return wrapWithAttribution((await res.json()) as SubmitTestAnswersResult);
 }
 
 type BaseSkinTypeInfo = Pick<SkinTypeInfo, 'code' | 'name' | 'category' | 'difficulty' | 'description'>;
@@ -142,6 +167,18 @@ export const SKIN_TYPE_CODES = Object.keys(SKIN_TYPES) as SkinType[];
 /**
  * Validation schema for search_products input
  */
+const COUNTRY_CODES = ['US', 'AE'] as const;
+
+/** Normalise country aliases to canonical 2-letter codes */
+function normaliseCountry(raw?: string): CountryCode | undefined {
+  if (!raw) return undefined;
+  const u = raw.toUpperCase().trim();
+  if (u === 'UAE' || u === 'EMIRATES' || u === 'DUBAI') return 'AE';
+  if (u === 'USA' || u === 'AMERICA') return 'US';
+  if ((COUNTRY_CODES as readonly string[]).includes(u)) return u as CountryCode;
+  return undefined;
+}
+
 const SearchProductsInputSchema = z.object({
   type: z.enum(PRODUCT_TYPES).optional(),
   skinType: z.string().optional().describe('Direct 4-letter Baumann skin type code, e.g. OSPT.'),
@@ -153,6 +190,7 @@ const SearchProductsInputSchema = z.object({
   budget: z.number().positive().optional(),
   keyword: z.string().optional().describe('Search keyword to match against product name (case-insensitive).'),
   ingredient: z.string().optional().describe('Filter by ingredient name (partial match, case-insensitive).'),
+  country: z.enum(COUNTRY_CODES).optional().describe('Country code for the product market (US, AE).'),
   limit: z.number().int().min(1).max(50).optional().default(50),
 }).strict();
 
@@ -212,6 +250,9 @@ async function fetchProducts(params: Record<string, string | number | undefined>
   return (await res.json()) as ProductsResponse;
 }
 
+/** Server-side sort orders accepted by /api/products. */
+export type ProductSort = 'rating-desc' | 'price-asc' | 'price-desc';
+
 /**
  * Search skincare products from the live API.
  *
@@ -224,13 +265,16 @@ async function fetchProducts(params: Record<string, string | number | undefined>
  * filter is applied client-side to the returned page and `filtersAppliedLocally`
  * says so (in that case `total` can only describe the page).
  */
-export async function searchProducts(input: unknown = {}): Promise<SearchProductsResult> {
+export async function searchProducts(
+  input: unknown = {},
+  opts: { sort?: ProductSort } = {}
+): Promise<SearchProductsResult> {
   const parsed = SearchProductsInputSchema.safeParse(input ?? {});
   if (!parsed.success) {
     throw new Error(`Invalid search_products arguments: ${formatValidationError(parsed.error)}`);
   }
 
-  const { type, skinType, brand, od, sr, pn, wt, budget, keyword, ingredient, limit = 50 } = parsed.data;
+  const { type, skinType, brand, od, sr, pn, wt, budget, keyword, ingredient, country, limit = 50 } = parsed.data;
   const pageSize = Math.min(limit, 50);
 
   const params = {
@@ -244,8 +288,9 @@ export async function searchProducts(input: unknown = {}): Promise<SearchProduct
     budget,
     keyword,
     ingredient,
+    country,
     limit: pageSize,
-    sort: 'rating-desc',
+    sort: opts.sort ?? 'rating-desc',
   };
   const data = await fetchProducts(params);
   let products = data.products ?? [];
@@ -288,7 +333,17 @@ export async function searchProducts(input: unknown = {}): Promise<SearchProduct
   products = products.slice(0, pageSize);
   const total = local.length === 0 && typeof data.total === 'number' ? data.total : products.length;
 
-  const result: SearchProductsResult = {
+  // Documented in the tool description: when an ingredient filter is used,
+  // report how many products matched the other filters alone, so the caller
+  // can retry with keyword instead.
+  let availableWithoutIngredient: number | undefined;
+  if (ingredient) {
+    const without = await fetchProducts({ ...params, ingredient: undefined, limit: 1 });
+    availableWithoutIngredient = without.total ?? 0;
+  }
+
+  return wrapWithAttribution({
+    _product_links_note: 'Each product has a "link" field with its full URL on skinguide.beauty. Always use this URL when presenting products — link the product name to its page.',
     total,
     returned: products.length,
     query: {
@@ -304,18 +359,133 @@ export async function searchProducts(input: unknown = {}): Promise<SearchProduct
       ingredient: ingredient ?? null,
     },
     products,
-  };
-  if (local.length) result.filtersAppliedLocally = local;
+    ...(local.length > 0 && { filtersAppliedLocally: local }),
+    ...(availableWithoutIngredient !== undefined && {
+      available_without_ingredient_filter: availableWithoutIngredient,
+    }),
+  });
+}
 
-  // Documented in the tool description: when an ingredient filter yields
-  // nothing, report how many matched the other filters so the caller can
-  // retry with keyword instead.
-  if (ingredient && total === 0) {
-    const without = await fetchProducts({ ...params, ingredient: undefined, limit: 1 });
-    result.available_without_ingredient_filter = without.total ?? 0;
+/**
+ * Return top-N products of a category for side-by-side comparison
+ */
+export async function compareProducts(params: {
+  type: string;
+  skinType?: string;
+  country?: string;
+  budget?: number;
+  sortBy?: string;
+  limit?: number;
+}): Promise<CompareProductsResult> {
+  const { type, skinType, budget, sortBy = 'rating', limit = 3 } = params;
+  const country = normaliseCountry(params.country);
+  const cappedLimit = Math.min(Math.max(limit, 2), 5);
+
+  // Sort server-side so the top N are the top N of the whole category, not of one page.
+  const result = await searchProducts(
+    { type: type as typeof PRODUCT_TYPES[number], skinType, country, budget, limit: cappedLimit },
+    { sort: sortBy === 'price' ? 'price-asc' : 'rating-desc' }
+  );
+  const products = result.products;
+
+  return {
+    type,
+    skinType,
+    country,
+    budget,
+    sortBy,
+    products: products.slice(0, cappedLimit),
+    total: products.slice(0, cappedLimit).length,
+  };
+}
+
+/**
+ * Build a complete skincare routine with product candidates per step
+ */
+export async function buildRoutine(params: {
+  skinType: string;
+  budget?: number;
+  budgetMode?: string;
+  country?: string;
+  sortBy?: string;
+  gender?: string;
+  timeOfDay?: string;
+  limit?: number;
+}): Promise<BuildRoutineResult> {
+  const {
+    skinType,
+    budget,
+    budgetMode = 'per-product',
+    sortBy = 'rating',
+    gender,
+    timeOfDay,
+    limit = 3,
+  } = params;
+  const country = normaliseCountry(params.country);
+  const type = skinType.toUpperCase() as SkinType;
+  const candidatesPerStep = Math.min(Math.max(limit, 1), 5);
+
+  // Fetch routine steps
+  const routineResult = await getRoutine(skinType, gender, timeOfDay);
+
+  // For each step fetch candidate products
+  const stepsWithProducts: RoutineStepWithProducts[] = await Promise.all(
+    routineResult.steps.map(async (step) => {
+      const perProductBudget = budgetMode === 'per-product' ? budget : undefined;
+      const searchResult = await searchProducts(
+        {
+          type: step.productType as typeof PRODUCT_TYPES[number],
+          skinType: type,
+          country,
+          budget: perProductBudget,
+          limit: candidatesPerStep,
+        },
+        { sort: sortBy === 'price' ? 'price-asc' : 'rating-desc' }
+      );
+
+      const candidates = searchResult.products.slice(0, candidatesPerStep);
+      const lowestPrice = candidates.length > 0 ? Math.min(...candidates.map(p => p.price)) : undefined;
+
+      return { ...step, candidates, lowestPrice };
+    })
+  );
+
+  // Compute estimated min cost
+  const stepPrices = stepsWithProducts
+    .map(s => s.lowestPrice)
+    .filter((p): p is number => p !== undefined);
+
+  let estimatedMinCost: number | undefined;
+  if (stepPrices.length > 0) {
+    const rawTotal = stepPrices.reduce((a, b) => a + b, 0);
+
+    if (budgetMode === 'total' && budget !== undefined) {
+      // Greedy: sort by cheapest step first, allocate until budget exhausted
+      const sorted = [...stepsWithProducts].sort((a, b) => (a.lowestPrice ?? Infinity) - (b.lowestPrice ?? Infinity));
+      let remaining = budget;
+      for (const step of sorted) {
+        if (step.lowestPrice !== undefined && step.lowestPrice <= remaining) {
+          remaining -= step.lowestPrice;
+        } else {
+          step.candidates = step.candidates.filter(c => c.price <= remaining);
+          if (step.candidates.length === 0) step.lowestPrice = undefined;
+        }
+      }
+      estimatedMinCost = parseFloat((budget - remaining).toFixed(2));
+    } else {
+      estimatedMinCost = parseFloat(rawTotal.toFixed(2));
+    }
   }
 
-  return result;
+  return {
+    skinType: type,
+    country,
+    budgetMode: budgetMode as 'per-product' | 'total',
+    budgetCap: budget,
+    steps: stepsWithProducts,
+    totalSteps: stepsWithProducts.length,
+    estimatedMinCost,
+  };
 }
 
 /**
@@ -327,7 +497,7 @@ export function getSkinTypeInfo(skinType: string): SkinTypeInfo {
     throw new Error(`Unknown skin type "${skinType}". Valid codes: ${SKIN_TYPE_CODES.join(', ')}`);
   }
 
-  return {
+  return wrapWithAttribution({
     ...t,
     title: `${t.code} - ${t.name}`,
     fullName: t.name,
@@ -339,7 +509,7 @@ export function getSkinTypeInfo(skinType: string): SkinTypeInfo {
       `Baumann code: ${t.code}`,
     ],
     routineDescription: `Recommended routine focus for ${t.code}: ${t.description}`,
-  };
+  });
 }
 
 /**
@@ -347,7 +517,7 @@ export function getSkinTypeInfo(skinType: string): SkinTypeInfo {
  */
 export function listSkinTypes(): ListSkinTypesResult {
   const skinTypes = SKIN_TYPE_CODES.map(code => getSkinTypeInfo(code));
-  return { skinTypes, total: skinTypes.length };
+  return wrapWithAttribution({ skinTypes, total: skinTypes.length });
 }
 
 /**
@@ -355,7 +525,7 @@ export function listSkinTypes(): ListSkinTypesResult {
  */
 export function getProductTypes(): GetProductTypesResult {
   const productTypes = PRODUCT_TYPES.map(id => ({ id }));
-  return { productTypes, total: productTypes.length };
+  return wrapWithAttribution({ productTypes, total: productTypes.length });
 }
 
 /**
@@ -387,25 +557,25 @@ export async function getRoutine(
     routineDescription?: string;
     steps?: Array<{ step: number; product?: string; productType?: string; action: string; timeOfDay: 'AM' | 'PM'; gender?: string | null }>;
   };
-  const steps: RoutineStep[] = (data.steps ?? []).map(s => ({
-    step: s.step,
-    productType: s.productType ?? s.product ?? '',
-    action: s.action,
-    timeOfDay: s.timeOfDay,
-    ...(s.gender ? { gender: s.gender } : {}),
+  const steps: RoutineStep[] = (data.steps ?? []).map(st => ({
+    step: st.step,
+    productType: st.productType ?? st.product ?? '',
+    action: st.action,
+    timeOfDay: st.timeOfDay,
+    ...(st.gender ? { gender: st.gender } : {}),
   }));
 
-  return {
+  return wrapWithAttribution({
     skinType: type,
     title: data.title,
     url: data.url,
     routineDescription: data.routineDescription,
     steps,
     total: steps.length,
-  };
+  });
 }
 
-let _brandsCache: { brands: string[]; total: number; ts: number } | null = null;
+let _brandsCache: { brands: string[]; ts: number } | null = null;
 const BRANDS_TTL_MS = 10 * 60 * 1000;
 
 /**
@@ -433,15 +603,18 @@ export async function getBrands(query?: string): Promise<GetBrandsResult> {
         .filter(b => b.length > 0)
     )].sort((a, b) => a.localeCompare(b));
 
-    _brandsCache = { brands, total: brands.length, ts: Date.now() };
+    _brandsCache = { brands, ts: Date.now() };
   }
 
+  let brands = _brandsCache.brands;
   if (query) {
     const ql = query.toLowerCase();
-    const brands = _brandsCache.brands.filter(b => b.toLowerCase().includes(ql));
-    return { brands, total: brands.length };
+    brands = brands.filter(b => b.toLowerCase().includes(ql));
   }
-  return { brands: _brandsCache.brands, total: _brandsCache.total };
+  return wrapWithAttribution({
+    brands,
+    total: brands.length,
+  });
 }
 
 /**
@@ -536,4 +709,107 @@ export function getSkinTypeImage(
   }
 
   return { skinType: type, images, total: images.length };
+}
+
+/**
+ * Get user reviews for a specific product.
+ *
+ * Served by the productReviews Cloud Function (query param `product_id`).
+ * Its `sort=rating` currently returns 500, so on a server error for that sort
+ * the reviews are fetched newest-first and sorted by rating locally.
+ */
+export async function getProductReviews(
+  product_id: string,
+  sort?: string,
+  limit?: number
+): Promise<GetProductReviewsResult> {
+  const fetchReviews = async (sortParam?: string) => {
+    const url = new URL(`${FUNCTIONS_URL}/productReviews`);
+    url.searchParams.set('product_id', product_id);
+    if (sortParam) url.searchParams.set('sort', sortParam);
+    if (limit != null) url.searchParams.set('limit', String(limit));
+    return fetch(url.toString());
+  };
+
+  let res = await fetchReviews(sort);
+  let sortedLocally = false;
+  if (!res.ok && res.status >= 500 && sort === 'rating') {
+    res = await fetchReviews('recent');
+    sortedLocally = true;
+  }
+  if (!res.ok) {
+    throw new Error(`Live API error ${res.status}: ${res.statusText}`);
+  }
+
+  const data = (await res.json()) as {
+    reviews?: GetProductReviewsResult['reviews'];
+    product_name?: string | null;
+    avg_rating?: number | null;
+    review_count?: number | null;
+  };
+  let reviews = data.reviews ?? [];
+  if (sortedLocally) {
+    reviews = [...reviews].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
+  }
+
+  return {
+    product_id,
+    product_name: data.product_name ?? null,
+    avg_rating: data.avg_rating ?? null,
+    review_count: data.review_count ?? null,
+    reviews,
+    total: reviews.length,
+    ...(sortedLocally && { _note: "sort=rating failed upstream; reviews were fetched newest-first and sorted by rating locally." }),
+  };
+}
+
+/**
+ * Get enriched ingredient list for a specific product
+ */
+export async function getProductIngredients(product_id: string): Promise<GetProductIngredientsResult> {
+  const url = new URL(`${FUNCTIONS_URL}/productIngredients`);
+  url.searchParams.set('product_id', product_id);
+
+  const res = await fetch(url.toString());
+  if (!res.ok) {
+    throw new Error(`Live API error ${res.status}: ${res.statusText}`);
+  }
+
+  const data = (await res.json()) as { ingredients?: Array<{ name: string; detail?: IngredientDetail }> };
+  const ingredients = data.ingredients ?? [];
+
+  return wrapWithAttribution({
+    product_id,
+    ingredients,
+    total: ingredients.length,
+  });
+}
+
+/**
+ * Look up detailed information about a skincare ingredient
+ */
+export async function getIngredientInfo(slug?: string, name?: string): Promise<GetIngredientInfoResult> {
+  if (!slug && !name) {
+    throw new Error('Provide at least one of: slug or name');
+  }
+
+  const url = new URL(`${FUNCTIONS_URL}/ingredientInfo`);
+  if (slug) url.searchParams.set('slug', slug);
+  if (name) url.searchParams.set('name', name);
+
+  const res = await fetch(url.toString());
+  if (!res.ok) {
+    if (res.status === 404) {
+      return wrapWithAttribution({ ingredient: null, found: false });
+    }
+    throw new Error(`Live API error ${res.status}: ${res.statusText}`);
+  }
+
+  const data = (await res.json()) as { ingredient?: IngredientDetail };
+  const ingredient = data.ingredient ?? null;
+
+  return wrapWithAttribution({
+    ingredient,
+    found: ingredient !== null,
+  });
 }

@@ -29,6 +29,8 @@ export interface SkincareProduct {
   skinTypes: SkinType[];
 }
 
+export type CountryCode = 'US' | 'AE';
+
 export interface SearchProductsParams {
   type?: string;
   brand?: string;
@@ -40,6 +42,7 @@ export interface SearchProductsParams {
   budget?: number;
   keyword?: string;
   ingredient?: string;
+  country?: CountryCode;
   limit?: number;
 }
 
@@ -50,8 +53,6 @@ export interface SearchProductsResult {
   returned: number;
   /** Filters the API did not apply and that were applied to the returned page only. */
   filtersAppliedLocally?: string[];
-  /** Present when an ingredient filter matched nothing: matches for the other filters alone. */
-  available_without_ingredient_filter?: number;
   query: {
     type: string;
     brand: string | null;
@@ -65,6 +66,7 @@ export interface SearchProductsResult {
     ingredient: string | null;
   };
   products: SkincareProduct[];
+  available_without_ingredient_filter?: number;
 }
 
 export interface SkinTypeInfo {
@@ -145,6 +147,89 @@ export interface SubmitTestAnswersResult {
   scores: Record<'O_D' | 'S_R' | 'P_N' | 'W_T', number>;
   acne?: boolean;
   darkSpots?: boolean;
+}
+
+export interface CompareProductsResult {
+  type: string;
+  skinType?: string;
+  country?: CountryCode;
+  budget?: number;
+  sortBy: string;
+  products: SkincareProduct[];
+  total: number;
+}
+
+export interface RoutineStepWithProducts {
+  step: number;
+  productType: string;
+  action: string;
+  timeOfDay: 'AM' | 'PM';
+  gender?: string;
+  candidates: SkincareProduct[];
+  lowestPrice?: number;
+}
+
+export interface BuildRoutineResult {
+  skinType: SkinType;
+  country?: CountryCode;
+  budgetMode: 'per-product' | 'total';
+  budgetCap?: number;
+  steps: RoutineStepWithProducts[];
+  totalSteps: number;
+  estimatedMinCost?: number;
+}
+
+/** Shape returned by the productReviews Cloud Function. */
+export interface ProductReview {
+  reviewId?: string;
+  rating: number;
+  comment?: string;
+  userSkinType?: string;
+  userAgeRange?: string;
+  createdAt?: string;
+}
+
+export interface GetProductReviewsResult {
+  product_id: string;
+  product_name?: string | null;
+  avg_rating?: number | null;
+  review_count?: number | null;
+  _note?: string;
+  reviews: ProductReview[];
+  total: number;
+}
+
+/** Shape returned by the ingredientInfo Cloud Function (values are strings on the wire). */
+export interface IngredientDetail {
+  id?: string;
+  slug: string;
+  name: string;
+  description?: string;
+  quick_facts?: string;
+  our_take?: string;
+  comedogenicity?: string | number | null;
+  irritancy?: string | number | null;
+  what_it_does?: string;
+  all_functions?: string;
+  also_called?: string;
+  aliases?: string[] | string;
+  source_url?: string;
+}
+
+export interface ProductIngredient {
+  name: string;
+  detail?: IngredientDetail;
+}
+
+export interface GetProductIngredientsResult {
+  product_id: string;
+  ingredients: ProductIngredient[];
+  total: number;
+}
+
+export interface GetIngredientInfoResult {
+  ingredient: IngredientDetail | null;
+  found: boolean;
 }
 
 export type SkinTypeImageRace = 'Asian' | 'Black' | 'Latin' | 'White';
