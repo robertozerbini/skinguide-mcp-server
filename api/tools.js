@@ -6,10 +6,9 @@
  * skin-type endpoint).
  *
  * Live API facts (verified):
- *   GET /api/products?type=<type>&country=<country>
- *   - `type` and `country` are filtered server-side.
- *   - `budget` and skin-type axes are NOT filtered server-side → applied here.
- *   - Always returns up to 50 products per request.
+ *   GET /api/products?type=&country=&od=&sr=&pn=&wt=&budget=&limit=
+ *   - all of these are filtered server-side (verified 2026-10-24).
+ *   - pages at 20 rows by default, `limit` up to 100; `total` counts all matches.
  *   - Each product: { id, name, brand, type, price, currency, size,
  *                     image, link, country, skinTypes[] }
  */
@@ -129,8 +128,9 @@ function matchesSkinType(productSkinTypes, { od, sr, pn, wt }) {
 /* ── Tool: search_products ───────────────────────────────────────────────── */
 
 /**
- * Forwards to live API then applies client-side filters for budget and skin
- * type axes (the live API only filters by `type` and `country` server-side).
+ * Forwards every filter to the live API. /api/products pages its results
+ * (20 rows by default, at most 100), so filtering client-side would only ever
+ * see the first page; `total` is the server's count of all matches.
  */
 export async function searchProducts(input = {}) {
   const parsed = SearchProductsInputSchema.safeParse(input ?? {});
@@ -145,25 +145,41 @@ export async function searchProducts(input = {}) {
     budget,
     limit = 50,
   } = parsed.data;
+  const pageSize = Math.min(limit, 50);
 
   const url = new URL(`${LIVE_API_URL}/products`);
   if (type)    url.searchParams.set('type', type);
   if (country) url.searchParams.set('country', country);
+  if (od)      url.searchParams.set('od', od);
+  if (sr)      url.searchParams.set('sr', sr);
+  if (pn)      url.searchParams.set('pn', pn);
+  if (wt)      url.searchParams.set('wt', wt);
+  if (budget != null) url.searchParams.set('budget', String(budget));
+  url.searchParams.set('limit', String(pageSize));
 
   const res = await fetch(url.toString());
   if (!res.ok) throw new Error(`Live API error ${res.status}: ${res.statusText}`);
 
   const data = await res.json();
   let products = data.products ?? [];
+  const q = data.query ?? {};
 
-  // Client-side filtering
-  if (budget != null)          products = products.filter(p => p.price <= budget);
-  if (od || sr || pn || wt)    products = products.filter(p => matchesSkinType(p.skinTypes ?? [], { od, sr, pn, wt }));
+  // Guard: if the API did not echo a filter back, apply it to the page locally.
+  let local = false;
+  if (budget != null && (q.budget === undefined || q.budget === 'any')) {
+    local = true;
+    products = products.filter(p => p.price <= budget);
+  }
+  if ((od || sr || pn || wt) && (q.skinType === undefined || q.skinType === 'all')) {
+    local = true;
+    products = products.filter(p => matchesSkinType(p.skinTypes ?? [], { od, sr, pn, wt }));
+  }
 
-  products = products.slice(0, Math.min(limit, 50));
+  products = products.slice(0, pageSize);
 
   return {
-    total: products.length,
+    total: !local && typeof data.total === 'number' ? data.total : products.length,
+    returned: products.length,
     query: {
       type:    type    ?? 'all',
       country: country ?? 'US',

@@ -2,7 +2,7 @@
 /**
  * skinguide-mcp-server — stdio transport
  *
- * Run via npx:  npx skinguide-mcp-server
+ * Alternative stdio entry point (the published bin is dist/index.js).
  * All product data is fetched live from https://skinguide.beauty/api/products.
  */
 
