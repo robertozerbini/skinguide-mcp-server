@@ -75,7 +75,7 @@ AI agents, LLM applications, and developer tools can:
 | `get_product_reviews` | User reviews for a product — rating, comment, reviewer skin type, date |
 | `get_product_ingredients` | Ingredient list (INCI names) for a product (by product_id) |
 | `get_ingredient_info` | Structured facts for a cosmetic ingredient (functions, comedogenicity, irritancy), credited to Incidecoder |
-| `compare_products` | Top-N products of a category side-by-side, sorted by rating or price |
+| `compare_products` | Top-N products of a category side-by-side (cheapest first by default, or by rating) |
 | `build_routine` | Full routine for a skin type with product candidates per step and cost summary |
 
 ---
@@ -300,6 +300,7 @@ Input parameters:
 | `ingredient` | string | Exact text match against the stored ingredient list. Returns 0 when data is incomplete — use `keyword` instead. |
 | `budget` | number | Maximum price in dollars (use 5, 10, 20, 50, 100, or 101 for over $100) |
 | `country` | "US" or "AE" | Country market filter. Defaults to `US`. Aliases: UAE→AE, USA→US. |
+| `sort` | "price-asc", "price-desc" or "rating-desc" | Optional. Omit it for the fast default order (lowest price first). `rating-desc` is slow (about 10s or more) and only a few hundred products have ratings |
 | `limit` | integer | Max results, 1–50 (default 50) |
 
 When `ingredient` is used, the response includes `available_without_ingredient_filter` — the number of products that matched all other filters before the ingredient check. If that value is > 0 but `total` is 0, retry with `keyword` instead.
@@ -606,7 +607,7 @@ Input parameters:
 | `skinType` | string | 4-letter Baumann code to filter the pool |
 | `country` | "US" or "AE" | Country market. Defaults to `US`. |
 | `budget` | number | Maximum price per product |
-| `sortBy` | "rating" or "price" | Sort order. Defaults to `rating`. |
+| `sortBy` | "rating" or "price" | Optional. Omit it for the fast default (lowest price first). `rating` is slow (about 10s) and few products are rated. |
 | `limit` | integer 2–5 | Number of products to return. Defaults to 3. |
 
 Example:
@@ -622,7 +623,7 @@ Response:
   "type": "Cleanser",
   "skinType": "OSPT",
   "country": "US",
-  "sortBy": "rating",
+  "sortBy": "default",
   "total": 3,
   "products": [
     { "id": 12, "name": "CeraVe Foaming Cleanser", "brand": "CeraVe", "price": 14.99, ... },
@@ -646,7 +647,7 @@ Input parameters:
 | `budget` | number | Budget cap (interpretation depends on `budgetMode`) |
 | `budgetMode` | "per-product" or "total" | `per-product` (default) caps each step independently; `total` allocates greedily across all steps |
 | `country` | "US" or "AE" | Country market. Defaults to `US`. |
-| `sortBy` | "rating" or "price" | Candidate sort within each step. Defaults to `rating`. |
+| `sortBy` | "rating" or "price" | Candidate sort within each step. Omit it for the fast default (lowest price first). `rating` is slow (about 10s per step). |
 | `gender` | "male" or "female" | Restrict to gendered steps. Omit for all. |
 | `timeOfDay` | "AM" or "PM" | Restrict to morning or evening steps. Omit for both. |
 | `limit` | integer 1–5 | Candidate products per step. Defaults to 3. |

@@ -7,7 +7,7 @@
   "tools": [
     {
       "name": "search_products",
-      "description": "Search skincare products by type, skin type, brand, budget, keyword, and ingredient. Results are sorted by rating (best-rated first). Returns products with name, brand, price, link, image, and compatible skin types. The response also includes available_without_ingredient_filter when the ingredient filter is used.\n\nIMPORTANT USAGE NOTES:\n- If total=0, the filters were too narrow — retry with fewer filters (remove ingredient, remove budget, etc.).\n- 'ingredient' requires an exact text match in the stored ingredient list. Many products have incomplete ingredient data, so ingredient searches often return 0. If ingredient returns 0, retry using keyword=<ingredient_name> instead (e.g. keyword=\"vitamin e\").\n- 'skinType' must be a 4-letter Baumann code such as OSPT, DSPW, ORNW — NOT natural language like \"sensitive\" or \"oily skin\".\n- 'keyword' searches product names and tags and is a reliable fallback for ingredient concepts.\n- When total=0 with an ingredient filter, check available_without_ingredient_filter to see how many products matched the other filters — if > 0, retry with keyword instead of ingredient.\n\n'total' is the number of matching products across the whole catalog (all filters are applied server-side); 'returned' is how many are in this response.",
+      "description": "Search skincare products by type, skin type, brand, budget, keyword, and ingredient. By default results come in the catalog's default order (lowest price first); pass sort to change it. Returns products with name, brand, price, link, image, and compatible skin types. The response also includes available_without_ingredient_filter when the ingredient filter is used.\n\nIMPORTANT USAGE NOTES:\n- If total=0, the filters were too narrow — retry with fewer filters (remove ingredient, remove budget, etc.).\n- 'ingredient' requires an exact text match in the stored ingredient list. Many products have incomplete ingredient data, so ingredient searches often return 0. If ingredient returns 0, retry using keyword=<ingredient_name> instead (e.g. keyword=\"vitamin e\").\n- 'skinType' must be a 4-letter Baumann code such as OSPT, DSPW, ORNW — NOT natural language like \"sensitive\" or \"oily skin\".\n- 'keyword' searches product names and tags and is a reliable fallback for ingredient concepts.\n- When total=0 with an ingredient filter, check available_without_ingredient_filter to see how many products matched the other filters — if > 0, retry with keyword instead of ingredient.\n\n'total' is the number of matching products across the whole catalog (all filters are applied server-side); 'returned' is how many are in this response.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -61,6 +61,11 @@
             "type": "string",
             "description": "Country code for the product market. Defaults to 'US' when omitted. Supported codes: US (United States), AE (United Arab Emirates). Aliases accepted: UAE/EMIRATES/DUBAI → AE, USA/AMERICA → US.",
             "enum": ["US", "AE"]
+          },
+          "sort": {
+            "type": "string",
+            "description": "Optional sort order. Omit for the fast default (lowest price first). 'rating-desc' is slow (about 10s or more) and only a few hundred products have ratings.",
+            "enum": ["price-asc", "price-desc", "rating-desc"]
           },
           "limit": {
             "type": "number",
@@ -227,7 +232,7 @@
     },
     {
       "name": "compare_products",
-      "description": "Return the top N products of a given category structured for side-by-side comparison. Filters by skin type, country, and budget; sorts by rating (default) or price. Useful when the user asks to compare cleansers, moisturizers, sunscreens, etc.",
+      "description": "Return the top N products of a given category structured for side-by-side comparison. Filters by skin type, country, and budget; default order is lowest price first; sortBy 'rating' (slow, about 10s, few products rated) or 'price'. Useful when the user asks to compare cleansers, moisturizers, sunscreens, etc.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -252,7 +257,7 @@
           },
           "sortBy": {
             "type": "string",
-            "description": "Sort order for the comparison. Defaults to 'rating'.",
+            "description": "Sort order for the comparison. Omit for the fast default (lowest price first). 'rating' is slow (about 10s) and few products are rated.",
             "enum": ["rating", "price"]
           },
           "limit": {
@@ -290,7 +295,7 @@
           },
           "sortBy": {
             "type": "string",
-            "description": "Candidate sort order within each step. Defaults to 'rating'.",
+            "description": "Candidate sort order within each step. Omit for the fast default (lowest price first). 'rating' is slow (about 10s per step) and few products are rated.",
             "enum": ["rating", "price"]
           },
           "gender": {

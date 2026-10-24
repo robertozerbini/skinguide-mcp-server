@@ -191,6 +191,7 @@ const SearchProductsInputSchema = z.object({
   keyword: z.string().optional().describe('Search keyword to match against product name (case-insensitive).'),
   ingredient: z.string().optional().describe('Filter by ingredient name (partial match, case-insensitive).'),
   country: z.enum(COUNTRY_CODES).optional().describe('Country code for the product market (US, AE).'),
+  sort: z.enum(['price-asc', 'price-desc', 'rating-desc']).optional(),
   limit: z.number().int().min(1).max(50).optional().default(50),
 }).strict();
 
@@ -253,6 +254,13 @@ async function fetchProducts(params: Record<string, string | number | undefined>
 /** Server-side sort orders accepted by /api/products. */
 export type ProductSort = 'rating-desc' | 'price-asc' | 'price-desc';
 
+/** Map a compare/build `sortBy` to the API sort; undefined keeps the API's fast default order. */
+function toProductSort(sortBy?: string): ProductSort | undefined {
+  if (sortBy === 'price') return 'price-asc';
+  if (sortBy === 'rating') return 'rating-desc';
+  return undefined;
+}
+
 /**
  * Search skincare products from the live API.
  *
@@ -265,16 +273,13 @@ export type ProductSort = 'rating-desc' | 'price-asc' | 'price-desc';
  * filter is applied client-side to the returned page and `filtersAppliedLocally`
  * says so (in that case `total` can only describe the page).
  */
-export async function searchProducts(
-  input: unknown = {},
-  opts: { sort?: ProductSort } = {}
-): Promise<SearchProductsResult> {
+export async function searchProducts(input: unknown = {}): Promise<SearchProductsResult> {
   const parsed = SearchProductsInputSchema.safeParse(input ?? {});
   if (!parsed.success) {
     throw new Error(`Invalid search_products arguments: ${formatValidationError(parsed.error)}`);
   }
 
-  const { type, skinType, brand, od, sr, pn, wt, budget, keyword, ingredient, country, limit = 50 } = parsed.data;
+  const { type, skinType, brand, od, sr, pn, wt, budget, keyword, ingredient, country, sort, limit = 50 } = parsed.data;
   const pageSize = Math.min(limit, 50);
 
   const params = {
@@ -290,7 +295,9 @@ export async function searchProducts(
     ingredient,
     country,
     limit: pageSize,
-    sort: opts.sort ?? 'rating-desc',
+    // No sort by default: the API's own order (price ascending) is fast, while
+    // rating-desc takes ~8-20s server-side and only a few hundred products are rated.
+    sort,
   };
   const data = await fetchProducts(params);
   let products = data.products ?? [];
@@ -377,15 +384,19 @@ export async function compareProducts(params: {
   sortBy?: string;
   limit?: number;
 }): Promise<CompareProductsResult> {
-  const { type, skinType, budget, sortBy = 'rating', limit = 3 } = params;
+  const { type, skinType, budget, sortBy, limit = 3 } = params;
   const country = normaliseCountry(params.country);
   const cappedLimit = Math.min(Math.max(limit, 2), 5);
 
   // Sort server-side so the top N are the top N of the whole category, not of one page.
-  const result = await searchProducts(
-    { type: type as typeof PRODUCT_TYPES[number], skinType, country, budget, limit: cappedLimit },
-    { sort: sortBy === 'price' ? 'price-asc' : 'rating-desc' }
-  );
+  const result = await searchProducts({
+    type: type as typeof PRODUCT_TYPES[number],
+    skinType,
+    country,
+    budget,
+    limit: cappedLimit,
+    sort: toProductSort(sortBy),
+  });
   const products = result.products;
 
   return {
@@ -393,7 +404,7 @@ export async function compareProducts(params: {
     skinType,
     country,
     budget,
-    sortBy,
+    sortBy: sortBy ?? 'default',
     products: products.slice(0, cappedLimit),
     total: products.slice(0, cappedLimit).length,
   };
@@ -416,7 +427,7 @@ export async function buildRoutine(params: {
     skinType,
     budget,
     budgetMode = 'per-product',
-    sortBy = 'rating',
+    sortBy,
     gender,
     timeOfDay,
     limit = 3,
@@ -432,16 +443,14 @@ export async function buildRoutine(params: {
   const stepsWithProducts: RoutineStepWithProducts[] = await Promise.all(
     routineResult.steps.map(async (step) => {
       const perProductBudget = budgetMode === 'per-product' ? budget : undefined;
-      const searchResult = await searchProducts(
-        {
-          type: step.productType as typeof PRODUCT_TYPES[number],
-          skinType: type,
-          country,
-          budget: perProductBudget,
-          limit: candidatesPerStep,
-        },
-        { sort: sortBy === 'price' ? 'price-asc' : 'rating-desc' }
-      );
+      const searchResult = await searchProducts({
+        type: step.productType as typeof PRODUCT_TYPES[number],
+        skinType: type,
+        country,
+        budget: perProductBudget,
+        limit: candidatesPerStep,
+        sort: toProductSort(sortBy),
+      });
 
       const candidates = searchResult.products.slice(0, candidatesPerStep);
       const lowestPrice = candidates.length > 0 ? Math.min(...candidates.map(p => p.price)) : undefined;

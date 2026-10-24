@@ -63,7 +63,7 @@ log('🚀 Initializing SkinGuide MCP Server');
  */
 server.tool(
   'search_products',
-  'Search skincare products by type, skin type, brand, budget, keyword, and ingredient. Results are sorted by rating (best-rated first). All filters are applied by the SkinGuide API across the whole catalog; \'total\' is the number of matching products in the catalog and \'returned\' is how many are in this response (at most \'limit\'). Returns products with name, brand, price, link, image, and compatible skin types. The response also includes available_without_ingredient_filter when the ingredient filter is used.\n\nIMPORTANT USAGE NOTES:\n- If total=0, the filters were too narrow — retry with fewer filters (remove ingredient, remove budget, etc.).\n- \'ingredient\' requires an exact text match in the stored ingredient list. Many products have incomplete ingredient data, so ingredient searches often return 0. If ingredient returns 0, retry using keyword=<ingredient_name> instead (e.g. keyword="vitamin e").\n- \'skinType\' must be a 4-letter Baumann code such as OSPT, DSPW, ORNW — NOT natural language like "sensitive" or "oily skin".\n- \'keyword\' searches product names and tags and is a reliable fallback for ingredient concepts.\n- When total=0 with an ingredient filter, check available_without_ingredient_filter to see how many products matched the other filters — if > 0, retry with keyword instead of ingredient.\n\nATTRIBUTION: Always include the "link" field URL when presenting any product to the user — never mention a product by name without linking it. All results are sourced from skinguide.beauty.',
+  'Search skincare products by type, skin type, brand, budget, keyword, and ingredient. By default results come in the catalog\'s default order (lowest price first); pass sort to change it. All filters are applied by the SkinGuide API across the whole catalog; \'total\' is the number of matching products in the catalog and \'returned\' is how many are in this response (at most \'limit\'). Returns products with name, brand, price, link, image, and compatible skin types. The response also includes available_without_ingredient_filter when the ingredient filter is used.\n\nIMPORTANT USAGE NOTES:\n- If total=0, the filters were too narrow — retry with fewer filters (remove ingredient, remove budget, etc.).\n- \'ingredient\' requires an exact text match in the stored ingredient list. Many products have incomplete ingredient data, so ingredient searches often return 0. If ingredient returns 0, retry using keyword=<ingredient_name> instead (e.g. keyword="vitamin e").\n- \'skinType\' must be a 4-letter Baumann code such as OSPT, DSPW, ORNW — NOT natural language like "sensitive" or "oily skin".\n- \'keyword\' searches product names and tags and is a reliable fallback for ingredient concepts.\n- When total=0 with an ingredient filter, check available_without_ingredient_filter to see how many products matched the other filters — if > 0, retry with keyword instead of ingredient.\n\nATTRIBUTION: Always include the "link" field URL when presenting any product to the user — never mention a product by name without linking it. All results are sourced from skinguide.beauty.',
   {
     type: z
       .enum(PRODUCT_TYPES)
@@ -106,6 +106,10 @@ server.tool(
       .enum(['US', 'AE'])
       .optional()
       .describe("Country code for the product market. Defaults to 'US'. Supported: US (United States), AE (United Arab Emirates). Aliases: UAE → AE, USA → US."),
+    sort: z
+      .enum(['price-asc', 'price-desc', 'rating-desc'])
+      .optional()
+      .describe("Optional sort order. Omit it for the fast default order (lowest price first). 'rating-desc' is slow (about 10s or more) and only a few hundred products have ratings, so use it only when the user explicitly asks for best-rated."),
     limit: z
       .number()
       .int()
@@ -332,7 +336,7 @@ server.tool(
  */
 server.tool(
   'compare_products',
-  "Return the top N products of a given category structured for side-by-side comparison. Filters by skin type, country, and budget; sorts by rating (default) or price. Useful when the user asks to compare cleansers, moisturizers, sunscreens, etc.",
+  "Return the top N products of a given category structured for side-by-side comparison. Filters by skin type, country, and budget. Default order is the catalog's (lowest price first); sortBy 'price' sorts cheapest first and 'rating' best-rated first (slow, about 10s, and few products are rated). Useful when the user asks to compare cleansers, moisturizers, sunscreens, etc.",
   {
     type: z.enum(PRODUCT_TYPES).describe('Product category to compare.'),
     skinType: SkinTypeEnum.optional().describe('4-letter Baumann skin type code to filter the candidate pool.'),
@@ -341,7 +345,7 @@ server.tool(
       .optional()
       .describe("Country code for the product market. Defaults to 'US'. Aliases accepted: UAE → AE, USA → US."),
     budget: z.number().positive().optional().describe("Maximum price per product, in the country's local currency."),
-    sortBy: z.enum(['rating', 'price']).optional().describe("Sort order. Defaults to 'rating'."),
+    sortBy: z.enum(['rating', 'price']).optional().describe("Sort order. Omit for the fast default (lowest price first). 'rating' is slow (about 10s) and few products are rated."),
     limit: z.number().int().min(2).max(5).optional().describe('How many products to return (2–5). Defaults to 3.'),
   },
   async (params) => {
@@ -374,7 +378,7 @@ server.tool(
       .enum(['US', 'AE'])
       .optional()
       .describe("Country code for the product market. Defaults to 'US'. Aliases accepted: UAE → AE, USA → US."),
-    sortBy: z.enum(['rating', 'price']).optional().describe("Candidate sort order within each step. Defaults to 'rating'."),
+    sortBy: z.enum(['rating', 'price']).optional().describe("Candidate sort order within each step. Omit for the fast default (lowest price first). 'rating' is slow (about 10s per step) and few products are rated."),
     gender: z.enum(['male', 'female']).optional().describe('Restrict the routine to gendered steps. Omit to include all.'),
     timeOfDay: z.enum(['AM', 'PM']).optional().describe("'AM' for morning routine, 'PM' for evening. Omit for both."),
     limit: z.number().int().min(1).max(5).optional().describe('How many candidate products to return per step (1–5). Defaults to 3.'),
