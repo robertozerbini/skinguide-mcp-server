@@ -46,61 +46,74 @@ export const PRODUCT_TYPES = [
  * Get all skin type test questions for first-time users
  */
 export async function getTestQuestions(): Promise<GetTestQuestionsResult> {
-  const candidatePaths = ['/test/questions', '/questions'];
-  let lastError = '';
-
-  for (const path of candidatePaths) {
-    const url = new URL(`${LIVE_API_URL}${path}`);
-    const res = await fetch(url.toString());
-    if (!res.ok) {
-      lastError = `Live API error ${res.status}: ${res.statusText}`;
-      continue;
-    }
-
-    const data = (await res.json()) as {
-      questions?: GetTestQuestionsResult['questions'];
-      total?: number;
-    };
-    const questions = data.questions ?? [];
-    return {
-      questions,
-      total: data.total ?? questions.length,
-    };
+  const url = new URL(`${LIVE_API_URL}/testQuestions`);
+  const res = await fetch(url.toString());
+  if (!res.ok) {
+    throw new Error(`Unable to fetch test questions. Live API error ${res.status}: ${res.statusText}`);
   }
 
-  throw new Error(`Unable to fetch test questions. ${lastError}`.trim());
+  const data = (await res.json()) as {
+    questions?: GetTestQuestionsResult['questions'];
+    total?: number;
+    sections?: string[];
+    sectionLabels?: Record<string, string>;
+  };
+  const questions = data.questions ?? [];
+  return {
+    questions,
+    total: data.total ?? questions.length,
+    sections: data.sections,
+    sectionLabels: data.sectionLabels,
+  };
 }
 
 /**
- * Submit answers for the Baumann skin type test and compute the final 4-letter skin type code
+ * Submit answers for the Baumann skin type test.
+ *
+ * The live endpoint (POST /api/submitTestAnswers) requires a Firebase ID token
+ * for a signed-in SkinGuide user and saves the result to that user's account.
+ * The score-to-letter thresholds live server-side (Firestore `scoringRules`)
+ * and are not exposed publicly, so the type cannot be computed locally without
+ * hard-coding rules that could silently drift from the site's.
+ *
+ * Without SKINGUIDE_AUTH_TOKEN this returns a clear error instead of calling
+ * the API. With it, the answers are forwarded as-is.
  */
 export async function submitTestAnswers(
   answers: SubmitTestAnswerInput[]
 ): Promise<SubmitTestAnswersResult> {
-  const candidatePaths = ['/test/submit', '/submit-test-answers'];
   const authToken = process.env.SKINGUIDE_AUTH_TOKEN;
-  let lastError = '';
-
-  for (const path of candidatePaths) {
-    const url = new URL(`${LIVE_API_URL}${path}`);
-    const res = await fetch(url.toString(), {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        ...(authToken ? { authorization: `Bearer ${authToken}` } : {}),
-      },
-      body: JSON.stringify({ answers }),
-    });
-
-    if (!res.ok) {
-      lastError = `Live API error ${res.status}: ${res.statusText}`;
-      continue;
-    }
-
-    return (await res.json()) as SubmitTestAnswersResult;
+  if (!authToken) {
+    throw new Error(
+      'submit_test_answers requires a signed-in SkinGuide account: the live API only scores answers ' +
+        'for an authenticated user and saves the result to their profile. Take the free skin type test at ' +
+        'https://skinguide.beauty, then use the resulting 4-letter code with get_skin_type_info, get_routine ' +
+        'and search_products. (Advanced: set SKINGUIDE_AUTH_TOKEN to a Firebase ID token to submit from here.)'
+    );
   }
 
-  throw new Error(`Unable to submit test answers. ${lastError}`.trim());
+  const url = new URL(`${LIVE_API_URL}/submitTestAnswers`);
+  const res = await fetch(url.toString(), {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      authorization: `Bearer ${authToken}`,
+    },
+    body: JSON.stringify({ answers }),
+  });
+
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const body = (await res.json()) as { error?: string };
+      if (body?.error) detail = body.error;
+    } catch {
+      /* non-JSON error body */
+    }
+    throw new Error(`Unable to submit test answers. Live API error ${res.status}: ${detail}`);
+  }
+
+  return (await res.json()) as SubmitTestAnswersResult;
 }
 
 type BaseSkinTypeInfo = Pick<SkinTypeInfo, 'code' | 'name' | 'category' | 'difficulty' | 'description'>;
@@ -174,8 +187,42 @@ function matchesSkinType(
   });
 }
 
+type ProductsResponse = {
+  total?: number;
+  products?: SkincareProduct[];
+  query?: Record<string, unknown>;
+};
+
+/** True when the API echoed a value for this filter (i.e. it applied it server-side). */
+function serverApplied(query: Record<string, unknown> | undefined, key: string): boolean {
+  if (!query || !(key in query)) return false;
+  const v = query[key];
+  return v !== 'all' && v !== 'any' && v !== null && v !== undefined;
+}
+
+async function fetchProducts(params: Record<string, string | number | undefined>): Promise<ProductsResponse> {
+  const url = new URL(`${LIVE_API_URL}/products`);
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== '') url.searchParams.set(k, String(v));
+  }
+  const res = await fetch(url.toString());
+  if (!res.ok) {
+    throw new Error(`Live API error ${res.status}: ${res.statusText}`);
+  }
+  return (await res.json()) as ProductsResponse;
+}
+
 /**
- * Search skincare products from the live API with client-side filtering
+ * Search skincare products from the live API.
+ *
+ * Every filter is applied server-side by /api/products, which pages its results
+ * (20 rows by default, at most 100). Filtering client-side would only ever see
+ * the first page, so the filters are passed as query params and `total` is the
+ * server's count of all matches, not the length of the returned slice.
+ *
+ * As a guard, if the API response does not echo a filter back in `query`, that
+ * filter is applied client-side to the returned page and `filtersAppliedLocally`
+ * says so (in that case `total` can only describe the page).
  */
 export async function searchProducts(input: unknown = {}): Promise<SearchProductsResult> {
   const parsed = SearchProductsInputSchema.safeParse(input ?? {});
@@ -184,56 +231,66 @@ export async function searchProducts(input: unknown = {}): Promise<SearchProduct
   }
 
   const { type, skinType, brand, od, sr, pn, wt, budget, keyword, ingredient, limit = 50 } = parsed.data;
+  const pageSize = Math.min(limit, 50);
 
-  const url = new URL(`${LIVE_API_URL}/products`);
-  if (type) url.searchParams.set('type', type);
-  url.searchParams.set('sort', 'rating-desc');
-
-  const res = await fetch(url.toString());
-  if (!res.ok) {
-    throw new Error(`Live API error ${res.status}: ${res.statusText}`);
-  }
-
-  const data = (await res.json()) as { products?: SkincareProduct[] };
+  const params = {
+    type,
+    brand,
+    skinType: skinType?.toUpperCase(),
+    od,
+    sr,
+    pn,
+    wt,
+    budget,
+    keyword,
+    ingredient,
+    limit: pageSize,
+    sort: 'rating-desc',
+  };
+  const data = await fetchProducts(params);
   let products = data.products ?? [];
+  const q = data.query;
 
-  // Client-side filtering
-  if (brand) {
-    const brandLower = brand.toLowerCase();
-    products = products.filter(p => p.brand?.toLowerCase().includes(brandLower));
+  // Runtime check: apply locally only the filters the server did not echo back.
+  const local: string[] = [];
+  if (brand && !serverApplied(q, 'brand')) {
+    local.push('brand');
+    const b = brand.toLowerCase();
+    products = products.filter(p => p.brand?.toLowerCase().includes(b));
   }
-  if (skinType) {
-    const skinTypeUpper = skinType.toUpperCase() as SkinType;
-    products = products.filter(p => (p.skinTypes ?? []).includes(skinTypeUpper));
-  }
-  if (budget != null) {
+  if (budget != null && !serverApplied(q, 'budget')) {
+    local.push('budget');
     products = products.filter(p => p.price <= budget);
   }
-  if (od || sr || pn || wt) {
+  if ((skinType || od || sr || pn || wt) && !serverApplied(q, 'skinType')) {
+    local.push('skinType');
+    if (skinType) {
+      const st = skinType.toUpperCase() as SkinType;
+      products = products.filter(p => (p.skinTypes ?? []).includes(st));
+    }
     products = products.filter(p => matchesSkinType(p.skinTypes ?? [], { od, sr, pn, wt }));
   }
-  if (keyword) {
-    const kwLower = keyword.toLowerCase();
-    products = products.filter(p => {
-      const inName = p.name?.toLowerCase().includes(kwLower) ?? false;
-      const searchKeywords = (p as SkincareProduct & { searchKeywords?: string[] }).searchKeywords ?? [];
-      const inKeywords = searchKeywords.some(k => k.toLowerCase().includes(kwLower));
-      return inName || inKeywords;
-    });
+  if (keyword && !serverApplied(q, 'keyword')) {
+    local.push('keyword');
+    const kw = keyword.toLowerCase();
+    products = products.filter(p => p.name?.toLowerCase().includes(kw));
   }
-  if (ingredient) {
-    const ingLower = ingredient.toLowerCase();
-    products = products.filter(p =>
-      (p.ingredients ?? []).some(ing => ing.toLowerCase().includes(ingLower))
-    );
+  if (ingredient && !serverApplied(q, 'ingredient')) {
+    local.push('ingredient');
+    const ing = ingredient.toLowerCase();
+    products = products.filter(p => (p.ingredients ?? []).some(i => i.toLowerCase().includes(ing)));
+  }
+  if (type && !serverApplied(q, 'type')) {
+    local.push('type');
+    products = products.filter(p => (p as SkincareProduct & { category?: string }).category === type);
   }
 
-  // Re-sort after client-side filtering to preserve rating order (API sorts before our filters)
-  products.sort((a, b) => ((b as any).avg_rating ?? 0) - ((a as any).avg_rating ?? 0));
-  products = products.slice(0, Math.min(limit, 50));
+  products = products.slice(0, pageSize);
+  const total = local.length === 0 && typeof data.total === 'number' ? data.total : products.length;
 
-  return {
-    total: products.length,
+  const result: SearchProductsResult = {
+    total,
+    returned: products.length,
     query: {
       type: type ?? 'all',
       brand: brand ?? null,
@@ -248,6 +305,17 @@ export async function searchProducts(input: unknown = {}): Promise<SearchProduct
     },
     products,
   };
+  if (local.length) result.filtersAppliedLocally = local;
+
+  // Documented in the tool description: when an ingredient filter yields
+  // nothing, report how many matched the other filters so the caller can
+  // retry with keyword instead.
+  if (ingredient && total === 0) {
+    const without = await fetchProducts({ ...params, ingredient: undefined, limit: 1 });
+    result.available_without_ingredient_filter = without.total ?? 0;
+  }
+
+  return result;
 }
 
 /**
@@ -303,7 +371,7 @@ export async function getRoutine(
     throw new Error(`Unknown skin type "${skinType}". Valid codes: ${SKIN_TYPE_CODES.join(', ')}`);
   }
 
-  const url = new URL(`${LIVE_API_URL}/routine`);
+  const url = new URL(`${LIVE_API_URL}/routines`);
   url.searchParams.set('skinType', type);
   if (gender) url.searchParams.set('gender', gender);
   if (timeOfDay) url.searchParams.set('timeOfDay', timeOfDay);
@@ -313,11 +381,25 @@ export async function getRoutine(
     throw new Error(`Live API error ${res.status}: ${res.statusText}`);
   }
 
-  const data = (await res.json()) as { steps?: RoutineStep[] };
-  let steps: RoutineStep[] = data.steps ?? [];
+  const data = (await res.json()) as {
+    title?: string;
+    url?: string;
+    routineDescription?: string;
+    steps?: Array<{ step: number; product?: string; productType?: string; action: string; timeOfDay: 'AM' | 'PM'; gender?: string | null }>;
+  };
+  const steps: RoutineStep[] = (data.steps ?? []).map(s => ({
+    step: s.step,
+    productType: s.productType ?? s.product ?? '',
+    action: s.action,
+    timeOfDay: s.timeOfDay,
+    ...(s.gender ? { gender: s.gender } : {}),
+  }));
 
   return {
     skinType: type,
+    title: data.title,
+    url: data.url,
+    routineDescription: data.routineDescription,
     steps,
     total: steps.length,
   };
@@ -327,31 +409,39 @@ let _brandsCache: { brands: string[]; total: number; ts: number } | null = null;
 const BRANDS_TTL_MS = 10 * 60 * 1000;
 
 /**
- * Get all available brands (cached for 10 minutes)
+ * Get all available brands (cached for 10 minutes).
+ *
+ * Uses /api/searchFilters, which lists every brand in the catalog in one call.
+ * (/api/products pages at 100 rows, so deriving brands from it would need ~280
+ * requests; /api/brands is currently failing on production.) The brand list is
+ * returned as the API provides it; an optional case-insensitive `query`
+ * narrows it.
  */
-export async function getBrands(): Promise<GetBrandsResult> {
-  if (_brandsCache && Date.now() - _brandsCache.ts < BRANDS_TTL_MS) {
-    return { brands: _brandsCache.brands, total: _brandsCache.total };
+export async function getBrands(query?: string): Promise<GetBrandsResult> {
+  if (!_brandsCache || Date.now() - _brandsCache.ts >= BRANDS_TTL_MS) {
+    const url = new URL(`${LIVE_API_URL}/searchFilters`);
+    const res = await fetch(url.toString());
+    if (!res.ok) {
+      throw new Error(`Live API error ${res.status}: ${res.statusText}`);
+    }
+
+    const data = (await res.json()) as { brands?: unknown[] };
+    const brands = [...new Set(
+      (data.brands ?? [])
+        .filter((b): b is string => typeof b === 'string')
+        .map(b => b.trim())
+        .filter(b => b.length > 0)
+    )].sort((a, b) => a.localeCompare(b));
+
+    _brandsCache = { brands, total: brands.length, ts: Date.now() };
   }
 
-  const url = new URL(`${LIVE_API_URL}/products`);
-
-  const res = await fetch(url.toString());
-  if (!res.ok) {
-    throw new Error(`Live API error ${res.status}: ${res.statusText}`);
+  if (query) {
+    const ql = query.toLowerCase();
+    const brands = _brandsCache.brands.filter(b => b.toLowerCase().includes(ql));
+    return { brands, total: brands.length };
   }
-
-  const data = (await res.json()) as { products?: SkincareProduct[] };
-  const products = data.products ?? [];
-
-  const brands = [...new Set(
-    products
-      .map(p => p.brand)
-      .filter((b): b is string => typeof b === 'string' && b.trim().length > 0)
-  )].sort();
-
-  _brandsCache = { brands, total: brands.length, ts: Date.now() };
-  return { brands, total: brands.length };
+  return { brands: _brandsCache.brands, total: _brandsCache.total };
 }
 
 /**

@@ -5,7 +5,7 @@
  * Model Context Protocol server for skincare product discovery
  * using the Baumann Skin Type system.
  *
- * All product data is fetched live from https://skinguide.beauty/api/products.
+ * All product data is fetched live from the SkinGuide API (https://skinguide.beauty/api).
  * Logs are sent to stderr to preserve MCP stdio protocol integrity.
  */
 
@@ -57,7 +57,7 @@ log('🚀 Initializing SkinGuide MCP Server');
  */
 server.tool(
   'search_products',
-  `Search skincare products by type, skin type, brand, budget, keyword, and ingredient. Results are sorted by rating (best-rated first). Returns products with name, brand, price, link, image, and compatible skin types. The response also includes available_without_ingredient_filter when the ingredient filter is used.
+  `Search skincare products by type, skin type, brand, budget, keyword, and ingredient. Results are sorted by rating (best-rated first). All filters are applied by the SkinGuide API across the whole catalog; 'total' is the number of matching products in the catalog and 'returned' is how many are in this response (at most 'limit'). Returns products with name, brand, price, link, image, and compatible skin types. The response also includes available_without_ingredient_filter when the ingredient filter is used.
 
 IMPORTANT USAGE NOTES:
 - If total=0, the filters were too narrow — retry with fewer filters (remove ingredient, remove budget, etc.).
@@ -208,12 +208,17 @@ server.tool(
  */
 server.tool(
   'get_brands',
-  'Get a list of all available skincare brands in the SkinGuide product catalog.',
-  {},
-  async () => {
+  'Get the skincare brands in the SkinGuide product catalog. The full list has several thousand entries, so pass `query` to narrow it (case-insensitive substring, e.g. "cera" or "roche").',
+  {
+    query: z
+      .string()
+      .optional()
+      .describe('Optional case-insensitive substring to filter brand names by.'),
+  },
+  async ({ query }) => {
     try {
-      log('🏪 Executing get_brands');
-      const result = await getBrands();
+      log(`🏪 Executing get_brands query=${query ?? 'all'}`);
+      const result = await getBrands(query);
       return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -232,7 +237,7 @@ server.tool(
  */
 server.tool(
   'get_routine',
-  'Get the skincare routine steps for a specific Baumann skin type. Returns step-by-step instructions including product type, action, and time of day (AM/PM). Can filter by gender and time of day.',
+  'Get the skincare routine for a specific Baumann skin type. Returns the routine title, description, a link to the routine page on skinguide.beauty, and step-by-step instructions including product type, action, and time of day (AM/PM). Can filter by gender and time of day.',
   {
     skinType: SkinTypeEnum.describe('4-letter Baumann skin type code, e.g. OSPT'),
     gender: z
@@ -290,7 +295,7 @@ server.tool(
  */
 server.tool(
   'submit_test_answers',
-  'Submit answers for the Baumann skin type test and compute the final 4-letter skin type code (e.g. DSNT, ORPW). Requires authentication: pass the Firebase ID token in the Authorization header as \'Bearer <token>\'. Saves the result to the user\'s profile. Returns the skin type code, a score breakdown per dimension, and optional flags for acne and dark spots.',
+  'Submit all 15 answers for the Baumann skin type test and get the 4-letter skin type code (e.g. DSNT, ORPW). REQUIRES A SIGNED-IN SKINGUIDE ACCOUNT: the live API only scores answers for an authenticated user and saves the result to their profile. Unless the server was started with SKINGUIDE_AUTH_TOKEN (a Firebase ID token), this tool returns an error; in that case send the user to https://skinguide.beauty to take the test, then use their code with get_skin_type_info, get_routine and search_products.',
   {
     answers: z.array(
       z.object({
@@ -299,7 +304,7 @@ server.tool(
           .describe("The question identifier returned by get_test_questions (zero-based index as string, e.g. '0', '1', '2')."),
         value: z
           .number()
-          .describe('The numeric score of the chosen answer option.'),
+          .describe('The `score` of the chosen option, as returned by get_test_questions.'),
       })
     ),
   },

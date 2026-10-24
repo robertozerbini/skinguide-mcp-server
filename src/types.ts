@@ -44,7 +44,14 @@ export interface SearchProductsParams {
 }
 
 export interface SearchProductsResult {
+  /** Server-side count of all matching products (not just the returned page). */
   total: number;
+  /** Number of products in this response. */
+  returned: number;
+  /** Filters the API did not apply and that were applied to the returned page only. */
+  filtersAppliedLocally?: string[];
+  /** Present when an ingredient filter matched nothing: matches for the other filters alone. */
+  available_without_ingredient_filter?: number;
   query: {
     type: string;
     brand: string | null;
@@ -94,6 +101,9 @@ export interface RoutineStep {
 
 export interface GetRoutineResult {
   skinType: SkinType;
+  title?: string;
+  url?: string;
+  routineDescription?: string;
   steps: RoutineStep[];
   total: number;
 }
@@ -105,19 +115,24 @@ export interface GetBrandsResult {
 
 export interface TestQuestionOption {
   text: string;
-  value: number;
+  /** Score contributed to the question's section when this option is chosen. */
+  score: number;
 }
 
+/** Shape returned by GET /api/testQuestions. */
 export interface TestQuestion {
   id: string;
-  dimension: 'O_D' | 'S_R' | 'P_N' | 'W_T';
-  question: string;
+  section: 'O_D' | 'S_R' | 'P_N' | 'W_T';
+  text: string;
   options: TestQuestionOption[];
+  order?: number;
 }
 
 export interface GetTestQuestionsResult {
   questions: TestQuestion[];
   total: number;
+  sections?: string[];
+  sectionLabels?: Record<string, string>;
 }
 
 export interface SubmitTestAnswerInput {
