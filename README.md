@@ -12,7 +12,7 @@
 | Website | [skinguide.beauty](https://skinguide.beauty/) |
 | GitHub | [robertozerbini/skinguide-mcp-server](https://github.com/robertozerbini/skinguide-mcp-server) |
 | Protocol | [Model Context Protocol 2024-11-05](https://modelcontextprotocol.io/) |
-| Transports | stdio (npx) |
+| Transports | stdio (`npx` from GitHub, or local `node`) |
 
 ---
 
@@ -98,9 +98,15 @@ npm install
 npm start
 ```
 
-### Run via npx (published package)
+### Run via npx (from GitHub)
 
-No installation required. The MCP server runs on-demand via `npx` and fetches live product data from `https://skinguide.beauty/api/products`.
+The package is **not published on npm**; `npx` installs it straight from this GitHub repository. The `prepare` script compiles TypeScript to `dist/` during install, so nothing needs to be built by hand. The server fetches live data from `https://skinguide.beauty/api`.
+
+```bash
+npx -y github:robertozerbini/skinguide-mcp-server
+```
+
+The package has a single executable (`skinguide`), so `npx` runs it without a `--package` flag. The first run takes a little longer while it installs and compiles.
 
 ### Run with Docker
 
@@ -118,7 +124,7 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json`:
   "mcpServers": {
     "skinguide": {
       "command": "npx",
-      "args": ["skinguide-mcp-server"]
+      "args": ["-y", "github:robertozerbini/skinguide-mcp-server"]
     }
   }
 }
@@ -133,7 +139,7 @@ Edit `.cursor/mcp.json`:
   "mcpServers": {
     "skinguide": {
       "command": "npx",
-      "args": ["skinguide-mcp-server"]
+      "args": ["-y", "github:robertozerbini/skinguide-mcp-server"]
     }
   }
 }
@@ -289,9 +295,12 @@ Example — search by direct skin type and ingredient:
 
 Response:
 
+`total` is the number of matching products across the whole catalog; `returned` is how many are in this response (at most `limit`). All filters are applied by the SkinGuide API.
+
 ```json
 {
   "total": 5,
+  "returned": 1,
   "query": { "type": "all", "skinType": null, "od": "O", "sr": "S", "pn": null, "wt": null, "budget": 30, "keyword": null, "ingredient": null },
   "products": [
     {
@@ -349,13 +358,17 @@ Response:
 
 ### get_brands
 
-Get all available skincare brands in the database. Input: none.
+Get the skincare brands in the catalog. The full list has several thousand entries, so pass the optional `query` (case-insensitive substring) to narrow it.
 
-Response:
+| Parameter | Type | Description |
+|---|---|---|
+| `query` | string | Optional — e.g. `"cera"` |
+
+Response (unfiltered):
 
 ```json
 {
-  "total": 42,
+  "total": 5986,
   "brands": [
     "Acure",
     "Biossance",
