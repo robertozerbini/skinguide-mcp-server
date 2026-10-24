@@ -187,6 +187,7 @@ export async function searchProducts(input: unknown = {}): Promise<SearchProduct
 
   const url = new URL(`${LIVE_API_URL}/products`);
   if (type) url.searchParams.set('type', type);
+  url.searchParams.set('sort', 'rating-desc');
 
   const res = await fetch(url.toString());
   if (!res.ok) {
@@ -227,6 +228,8 @@ export async function searchProducts(input: unknown = {}): Promise<SearchProduct
     );
   }
 
+  // Re-sort after client-side filtering to preserve rating order (API sorts before our filters)
+  products.sort((a, b) => ((b as any).avg_rating ?? 0) - ((a as any).avg_rating ?? 0));
   products = products.slice(0, Math.min(limit, 50));
 
   return {
@@ -320,10 +323,17 @@ export async function getRoutine(
   };
 }
 
+let _brandsCache: { brands: string[]; total: number; ts: number } | null = null;
+const BRANDS_TTL_MS = 10 * 60 * 1000;
+
 /**
- * Get all available brands
+ * Get all available brands (cached for 10 minutes)
  */
 export async function getBrands(): Promise<GetBrandsResult> {
+  if (_brandsCache && Date.now() - _brandsCache.ts < BRANDS_TTL_MS) {
+    return { brands: _brandsCache.brands, total: _brandsCache.total };
+  }
+
   const url = new URL(`${LIVE_API_URL}/products`);
 
   const res = await fetch(url.toString());
@@ -340,10 +350,8 @@ export async function getBrands(): Promise<GetBrandsResult> {
       .filter((b): b is string => typeof b === 'string' && b.trim().length > 0)
   )].sort();
 
-  return {
-    brands,
-    total: brands.length,
-  };
+  _brandsCache = { brands, total: brands.length, ts: Date.now() };
+  return { brands, total: brands.length };
 }
 
 /**
