@@ -12,7 +12,7 @@
 | Website | [skinguide.beauty](https://skinguide.beauty/) |
 | GitHub | [robertozerbini/skinguide-mcp-server](https://github.com/robertozerbini/skinguide-mcp-server) |
 | Protocol | [Model Context Protocol 2024-11-05](https://modelcontextprotocol.io/) |
-| Transports | stdio (npx) |
+| Transports | stdio (`npx` from GitHub, or local `node`) |
 
 ---
 
@@ -73,9 +73,9 @@ AI agents, LLM applications, and developer tools can:
 | `get_test_questions` | All Baumann skin type quiz questions (grouped by dimension) |
 | `submit_test_answers` | Submit quiz answers and compute the user's 4-letter skin type code |
 | `get_product_reviews` | User reviews for a product — rating, comment, reviewer skin type, date |
-| `get_product_ingredients` | Full enriched ingredient list for a product (by product_id) |
-| `get_ingredient_info` | Detailed info for a cosmetic ingredient (comedogenicity, irritancy, expert take) |
-| `compare_products` | Top-N products of a category side-by-side, sorted by rating or price |
+| `get_product_ingredients` | Ingredient list (INCI names) for a product (by product_id) |
+| `get_ingredient_info` | Structured facts for a cosmetic ingredient (functions, comedogenicity, irritancy), credited to Incidecoder |
+| `compare_products` | Top-N products of a category side-by-side (cheapest first by default, or by rating) |
 | `build_routine` | Full routine for a skin type with product candidates per step and cost summary |
 
 ---
@@ -112,9 +112,15 @@ npm install
 npm start
 ```
 
-### Run via npx (published package)
+### Run via npx (from GitHub)
 
-No installation required. The MCP server runs on-demand via `npx` and fetches live product data from `https://skinguide.beauty/api/products`.
+The package is **not published on npm**; `npx` installs it straight from this GitHub repository. The `prepare` script compiles TypeScript to `dist/` during install, so nothing needs to be built by hand. The server fetches live data from `https://skinguide.beauty/api`.
+
+```bash
+npx -y github:robertozerbini/skinguide-mcp-server
+```
+
+The package has a single executable (`skinguide`), so `npx` runs it without a `--package` flag. The first run takes a little longer while it installs and compiles.
 
 ### Run with Docker
 
@@ -132,7 +138,7 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json`:
   "mcpServers": {
     "skinguide": {
       "command": "npx",
-      "args": ["skinguide-mcp-server"]
+      "args": ["-y", "github:robertozerbini/skinguide-mcp-server"]
     }
   }
 }
@@ -147,7 +153,7 @@ Edit `.cursor/mcp.json`:
   "mcpServers": {
     "skinguide": {
       "command": "npx",
-      "args": ["skinguide-mcp-server"]
+      "args": ["-y", "github:robertozerbini/skinguide-mcp-server"]
     }
   }
 }
@@ -294,6 +300,7 @@ Input parameters:
 | `ingredient` | string | Exact text match against the stored ingredient list. Returns 0 when data is incomplete — use `keyword` instead. |
 | `budget` | number | Maximum price in dollars (use 5, 10, 20, 50, 100, or 101 for over $100) |
 | `country` | "US" or "AE" | Country market filter. Defaults to `US`. Aliases: UAE→AE, USA→US. |
+| `sort` | "price-asc", "price-desc" or "rating-desc" | Optional. Omit it for the fast default order (lowest price first). `rating-desc` is slow (about 10s or more) and only a few hundred products have ratings |
 | `limit` | integer | Max results, 1–50 (default 50) |
 
 When `ingredient` is used, the response includes `available_without_ingredient_filter` — the number of products that matched all other filters before the ingredient check. If that value is > 0 but `total` is 0, retry with `keyword` instead.
@@ -312,9 +319,12 @@ Example — search by skin type with ingredient fallback to keyword:
 
 Response:
 
+`total` is the number of matching products across the whole catalog; `returned` is how many are in this response (at most `limit`). All filters are applied by the SkinGuide API.
+
 ```json
 {
   "total": 5,
+  "returned": 1,
   "query": { "type": "all", "skinType": null, "od": "O", "sr": "S", "pn": null, "wt": null, "budget": 30, "keyword": null, "ingredient": null },
   "products": [
     {
@@ -358,6 +368,9 @@ Response:
 ```json
 {
   "skinType": "OSPT",
+  "title": "...",
+  "url": "https://skinguide.beauty/routine/OSPT",
+  "routineDescription": "...",
   "total": 4,
   "steps": [
     { "step": 1, "productType": "Cleanser",    "action": "Cleanse",          "timeOfDay": "AM" },
@@ -372,13 +385,17 @@ Response:
 
 ### get_brands
 
-Get all available skincare brands in the database. Input: none.
+Get the skincare brands in the catalog. The full list has several thousand entries, so pass the optional `query` (case-insensitive substring) to narrow it.
 
-Response:
+| Parameter | Type | Description |
+|---|---|---|
+| `query` | string | Optional — e.g. `"cera"` |
+
+Response (unfiltered):
 
 ```json
 {
-  "total": 42,
+  "total": 5986,
   "brands": [
     "Acure",
     "Biossance",
@@ -396,7 +413,7 @@ Response:
 
 Get all Baumann skin type quiz questions. Input: none.
 
-Returns questions grouped by skin dimension (`O_D`, `S_R`, `P_N`, `W_T`), each with answer options and numeric scores. Use this to guide a user through the skin type assessment before calling `submit_test_answers`.
+Returns the 15 questions, each tagged with its skin dimension (`section`: `O_D`, `S_R`, `P_N`, `W_T`) and answer options with numeric scores. Source: `GET https://skinguide.beauty/api/testQuestions`.
 
 Response excerpt:
 
@@ -405,17 +422,17 @@ Response excerpt:
   "questions": [
     {
       "id": "0",
-      "dimension": "O_D",
-      "question": "How does your skin feel 2–3 hours after cleansing with no products applied?",
+      "section": "O_D",
+      "text": "How does your skin generally feel and look throughout the day (including after cleansing, without moisturizer, facial shine, and pore visibility)?",
       "options": [
-        { "text": "Tight and dry",        "value": 1 },
-        { "text": "Comfortable",          "value": 2 },
-        { "text": "Slightly shiny",       "value": 3 },
-        { "text": "Very oily and shiny",  "value": 4 }
+        { "text": "Very Dry: Feels very dry, flaky, or cracks without moisturizer; ...", "score": 8 },
+        { "text": "Balanced: Feels tight but not flaky, ...", "score": 16 }
       ]
     }
   ],
-  "total": 24
+  "total": 15,
+  "sections": ["O_D", "S_R", "P_N", "W_T"],
+  "sectionLabels": { "O_D": "Oily vs. Dry", "S_R": "Sensitive vs. Resistant", "P_N": "Pigmented vs. Non-Pigmented", "W_T": "Wrinkled vs. Tight" }
 }
 ```
 
@@ -425,7 +442,7 @@ Response excerpt:
 
 Submit answers for the Baumann skin type test and receive the computed 4-letter skin type code.
 
-> Requires a Firebase ID token passed via the `SKINGUIDE_AUTH_TOKEN` environment variable (or `Authorization: Bearer <token>` in the request). The result is saved to the user's profile.
+> **Requires a signed-in SkinGuide account.** The live endpoint (`POST https://skinguide.beauty/api/submitTestAnswers`) returns 401 without a Firebase ID token and saves the result to that user's profile. The server reads the token from the `SKINGUIDE_AUTH_TOKEN` environment variable. Without it the tool returns an error that sends the user to [skinguide.beauty](https://skinguide.beauty) to take the test. The score-to-type thresholds are stored server-side, so the tool does not compute the type locally.
 
 Input parameters:
 
@@ -433,7 +450,7 @@ Input parameters:
 |---|---|---|
 | `answers` | array | One entry per question: `{ "questionId": "0", "value": 3 }` |
 
-`questionId` is the zero-based string index returned by `get_test_questions`. `value` is the numeric score of the selected option.
+Send all 15 answers. `questionId` is the `id` returned by `get_test_questions`, and `value` is the `score` of the selected option.
 
 Example:
 
@@ -461,7 +478,9 @@ Response:
 
 ### get_product_reviews
 
-Get user reviews for a specific product.
+Get user reviews for a specific product. Source: the `productReviews` Cloud Function (`https://us-central1-vanity-e971f.cloudfunctions.net/productReviews?product_id=<id>`), because reviews are not behind the `skinguide.beauty/api` routes.
+
+> `sort=rating` currently fails upstream (HTTP 500). When that happens the tool fetches reviews newest-first, sorts them by rating locally, and adds a `_note` saying so.
 
 Input parameters:
 
@@ -474,27 +493,26 @@ Input parameters:
 Example:
 
 ```json
-{ "product_id": "534", "sort": "rating", "limit": 10 }
+{ "product_id": "0be8e8e29fe881af821bed6979799c32", "limit": 10 }
 ```
 
 Response:
 
 ```json
 {
-  "product_id": "534",
-  "total": 2,
+  "product_id": "0be8e8e29fe881af821bed6979799c32",
+  "product_name": null,
+  "avg_rating": null,
+  "review_count": null,
+  "total": 1,
   "reviews": [
     {
+      "reviewId": "0be8e8e29fe881af821bed6979799c32_...",
       "rating": 5,
-      "comment": "Cleared my skin in two weeks.",
-      "skinType": "OSPT",
-      "date": "2024-11-03"
-    },
-    {
-      "rating": 4,
-      "comment": "Effective but a bit drying.",
-      "skinType": "DRNT",
-      "date": "2024-10-15"
+      "comment": "I have dry, slightly sensitive skin, and this Hydro Jelly Fruit Mask was such a pleasant surprise...",
+      "userSkinType": "DSNW",
+      "userAgeRange": "35–44",
+      "createdAt": "2026-05-05T03:27:45.446Z"
     }
   ]
 }
@@ -504,7 +522,9 @@ Response:
 
 ### get_product_ingredients
 
-Get the full enriched ingredient list for a specific product.
+Get the full ingredient list for a specific product. Source: the `productIngredients` Cloud Function (`…cloudfunctions.net/productIngredients?product_id=<id>`).
+
+> At the time of writing the live function returns ingredient names only. If an entry ever carries a `detail` object, the server passes through only the same structured fields as `get_ingredient_info` (never prose) and adds a `_data_credit`. Use `get_ingredient_info` for an ingredient's functions and ratings.
 
 Input parameters:
 
@@ -515,28 +535,17 @@ Input parameters:
 Example:
 
 ```json
-{ "product_id": "534" }
+{ "product_id": "f839d81fabc8bfd2662226c7579738a7" }
 ```
 
-Response:
+Response (excerpt):
 
 ```json
 {
-  "product_id": "534",
-  "total": 3,
+  "product_id": "f839d81fabc8bfd2662226c7579738a7",
+  "total": 74,
   "ingredients": [
-    {
-      "name": "Benzoyl Peroxide",
-      "detail": {
-        "slug": "benzoyl-peroxide",
-        "name": "Benzoyl Peroxide",
-        "description": "An antimicrobial agent that kills acne-causing bacteria.",
-        "comedogenicity": 0,
-        "irritancy": 3,
-        "whatItDoes": ["Antimicrobial", "Keratolytic"],
-        "expertTake": "Highly effective for inflammatory acne but can be drying."
-      }
-    }
+    { "name": "Aqua" }
   ]
 }
 ```
@@ -545,7 +554,9 @@ Response:
 
 ### get_ingredient_info
 
-Look up detailed information about a cosmetic ingredient. Pass `slug` (kebab-case) or `name` (label text) — at least one is required.
+Look up detailed information about a cosmetic ingredient. Pass `slug` (kebab-case) or `name` (label text); at least one is required. Source: the `ingredientInfo` Cloud Function (`…cloudfunctions.net/ingredientInfo?name=<name>` or `?slug=<slug>`). An unknown ingredient returns `found: false`.
+
+> **Data credit.** Only structured fields are returned: functions, comedogenicity, irritancy, the editorial rating (`our_take`), and also-called names. They come from [Incidecoder](https://incidecoder.com) (now INKEEDecoder), and `_data_credit` says so. The catalog's prose `description` and `quick_facts` are Incidecoder's text and are deliberately **not** returned. This follows skinguide.beauty's own rule: "Functions and safety ratings sourced from Incidecoder." When you present these fields, credit Incidecoder with the `source_url`.
 
 Input parameters:
 
@@ -566,14 +577,19 @@ Response:
 {
   "found": true,
   "ingredient": {
-    "slug": "niacinamide",
     "name": "Niacinamide",
-    "description": "A form of vitamin B3 that improves skin barrier function and reduces pigmentation.",
-    "comedogenicity": 0,
-    "irritancy": 0,
-    "whatItDoes": ["Brightening", "Barrier repair", "Pore minimising"],
-    "expertTake": "One of the most versatile and well-tolerated actives for most skin types."
-  }
+    "slug": "niacinamide",
+    "also_called": "vitamin B3, nicotinamide",
+    "what_it_does": "cell-communicating ingredient, skin brightening, anti-acne, ...",
+    "all_functions": "smoothing",
+    "comedogenicity": null,
+    "irritancy": null,
+    "our_take": "superstar",
+    "source_url": "https://incidecoder.com/ingredients/niacinamide"
+  },
+  "_data_credit": "Functions and safety ratings sourced from Incidecoder (now INKEEDecoder): https://incidecoder.com/ingredients/niacinamide. Ingredient descriptions are not included.",
+  "_source": "skinguide.beauty",
+  "_note": "Ingredient data is served by skinguide.beauty, but these fields come from Incidecoder (INKEEDecoder). ..."
 }
 ```
 
@@ -591,7 +607,7 @@ Input parameters:
 | `skinType` | string | 4-letter Baumann code to filter the pool |
 | `country` | "US" or "AE" | Country market. Defaults to `US`. |
 | `budget` | number | Maximum price per product |
-| `sortBy` | "rating" or "price" | Sort order. Defaults to `rating`. |
+| `sortBy` | "rating" or "price" | Optional. Omit it for the fast default (lowest price first). `rating` is slow (about 10s) and few products are rated. |
 | `limit` | integer 2–5 | Number of products to return. Defaults to 3. |
 
 Example:
@@ -607,7 +623,7 @@ Response:
   "type": "Cleanser",
   "skinType": "OSPT",
   "country": "US",
-  "sortBy": "rating",
+  "sortBy": "default",
   "total": 3,
   "products": [
     { "id": 12, "name": "CeraVe Foaming Cleanser", "brand": "CeraVe", "price": 14.99, ... },
@@ -631,7 +647,7 @@ Input parameters:
 | `budget` | number | Budget cap (interpretation depends on `budgetMode`) |
 | `budgetMode` | "per-product" or "total" | `per-product` (default) caps each step independently; `total` allocates greedily across all steps |
 | `country` | "US" or "AE" | Country market. Defaults to `US`. |
-| `sortBy` | "rating" or "price" | Candidate sort within each step. Defaults to `rating`. |
+| `sortBy` | "rating" or "price" | Candidate sort within each step. Omit it for the fast default (lowest price first). `rating` is slow (about 10s per step). |
 | `gender` | "male" or "female" | Restrict to gendered steps. Omit for all. |
 | `timeOfDay` | "AM" or "PM" | Restrict to morning or evening steps. Omit for both. |
 | `limit` | integer 1–5 | Candidate products per step. Defaults to 3. |

@@ -28,6 +28,13 @@ import type {
 
 const LIVE_API_URL = process.env.LIVE_API_URL ?? 'https://skinguide.beauty/api';
 
+/**
+ * Reviews, product ingredients and ingredient info are not behind the
+ * skinguide.beauty/api Hosting rewrites; they are served only as direct
+ * Cloud Functions URLs.
+ */
+const FUNCTIONS_URL = process.env.SKINGUIDE_FUNCTIONS_URL ?? 'https://us-central1-vanity-e971f.cloudfunctions.net';
+
 const ATTRIBUTION = {
   _source: 'skinguide.beauty',
   _website: 'https://skinguide.beauty',
@@ -64,61 +71,74 @@ export const PRODUCT_TYPES = [
  * Get all skin type test questions for first-time users
  */
 export async function getTestQuestions(): Promise<GetTestQuestionsResult> {
-  const candidatePaths = ['/test/questions', '/questions'];
-  let lastError = '';
-
-  for (const path of candidatePaths) {
-    const url = new URL(`${LIVE_API_URL}${path}`);
-    const res = await fetch(url.toString());
-    if (!res.ok) {
-      lastError = `Live API error ${res.status}: ${res.statusText}`;
-      continue;
-    }
-
-    const data = (await res.json()) as {
-      questions?: GetTestQuestionsResult['questions'];
-      total?: number;
-    };
-    const questions = data.questions ?? [];
-    return wrapWithAttribution({
-      questions,
-      total: data.total ?? questions.length,
-    });
+  const url = new URL(`${LIVE_API_URL}/testQuestions`);
+  const res = await fetch(url.toString());
+  if (!res.ok) {
+    throw new Error(`Unable to fetch test questions. Live API error ${res.status}: ${res.statusText}`);
   }
 
-  throw new Error(`Unable to fetch test questions. ${lastError}`.trim());
+  const data = (await res.json()) as {
+    questions?: GetTestQuestionsResult['questions'];
+    total?: number;
+    sections?: string[];
+    sectionLabels?: Record<string, string>;
+  };
+  const questions = data.questions ?? [];
+  return {
+    questions,
+    total: data.total ?? questions.length,
+    sections: data.sections,
+    sectionLabels: data.sectionLabels,
+  };
 }
 
 /**
- * Submit answers for the Baumann skin type test and compute the final 4-letter skin type code
+ * Submit answers for the Baumann skin type test.
+ *
+ * The live endpoint (POST /api/submitTestAnswers) requires a Firebase ID token
+ * for a signed-in SkinGuide user and saves the result to that user's account.
+ * The score-to-letter thresholds live server-side (Firestore `scoringRules`)
+ * and are not exposed publicly, so the type cannot be computed locally without
+ * hard-coding rules that could silently drift from the site's.
+ *
+ * Without SKINGUIDE_AUTH_TOKEN this returns a clear error instead of calling
+ * the API. With it, the answers are forwarded as-is.
  */
 export async function submitTestAnswers(
   answers: SubmitTestAnswerInput[]
 ): Promise<SubmitTestAnswersResult> {
-  const candidatePaths = ['/test/submit', '/submit-test-answers'];
   const authToken = process.env.SKINGUIDE_AUTH_TOKEN;
-  let lastError = '';
-
-  for (const path of candidatePaths) {
-    const url = new URL(`${LIVE_API_URL}${path}`);
-    const res = await fetch(url.toString(), {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        ...(authToken ? { authorization: `Bearer ${authToken}` } : {}),
-      },
-      body: JSON.stringify({ answers }),
-    });
-
-    if (!res.ok) {
-      lastError = `Live API error ${res.status}: ${res.statusText}`;
-      continue;
-    }
-
-    return wrapWithAttribution((await res.json()) as SubmitTestAnswersResult);
+  if (!authToken) {
+    throw new Error(
+      'submit_test_answers requires a signed-in SkinGuide account: the live API only scores answers ' +
+        'for an authenticated user and saves the result to their profile. Take the free skin type test at ' +
+        'https://skinguide.beauty, then use the resulting 4-letter code with get_skin_type_info, get_routine, ' +
+        'build_routine and search_products. (Advanced: set SKINGUIDE_AUTH_TOKEN to a Firebase ID token to submit from here.)'
+    );
   }
 
-  throw new Error(`Unable to submit test answers. ${lastError}`.trim());
+  const url = new URL(`${LIVE_API_URL}/submitTestAnswers`);
+  const res = await fetch(url.toString(), {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      authorization: `Bearer ${authToken}`,
+    },
+    body: JSON.stringify({ answers }),
+  });
+
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const body = (await res.json()) as { error?: string };
+      if (body?.error) detail = body.error;
+    } catch {
+      /* non-JSON error body */
+    }
+    throw new Error(`Unable to submit test answers. Live API error ${res.status}: ${detail}`);
+  }
+
+  return wrapWithAttribution((await res.json()) as SubmitTestAnswersResult);
 }
 
 type BaseSkinTypeInfo = Pick<SkinTypeInfo, 'code' | 'name' | 'category' | 'difficulty' | 'description'>;
@@ -171,6 +191,7 @@ const SearchProductsInputSchema = z.object({
   keyword: z.string().optional().describe('Search keyword to match against product name (case-insensitive).'),
   ingredient: z.string().optional().describe('Filter by ingredient name (partial match, case-insensitive).'),
   country: z.enum(COUNTRY_CODES).optional().describe('Country code for the product market (US, AE).'),
+  sort: z.enum(['price-asc', 'price-desc', 'rating-desc']).optional(),
   limit: z.number().int().min(1).max(50).optional().default(50),
 }).strict();
 
@@ -205,8 +226,52 @@ function matchesSkinType(
   });
 }
 
+type ProductsResponse = {
+  total?: number;
+  products?: SkincareProduct[];
+  query?: Record<string, unknown>;
+};
+
+/** True when the API echoed a value for this filter (i.e. it applied it server-side). */
+function serverApplied(query: Record<string, unknown> | undefined, key: string): boolean {
+  if (!query || !(key in query)) return false;
+  const v = query[key];
+  return v !== 'all' && v !== 'any' && v !== null && v !== undefined;
+}
+
+async function fetchProducts(params: Record<string, string | number | undefined>): Promise<ProductsResponse> {
+  const url = new URL(`${LIVE_API_URL}/products`);
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== '') url.searchParams.set(k, String(v));
+  }
+  const res = await fetch(url.toString());
+  if (!res.ok) {
+    throw new Error(`Live API error ${res.status}: ${res.statusText}`);
+  }
+  return (await res.json()) as ProductsResponse;
+}
+
+/** Server-side sort orders accepted by /api/products. */
+export type ProductSort = 'rating-desc' | 'price-asc' | 'price-desc';
+
+/** Map a compare/build `sortBy` to the API sort; undefined keeps the API's fast default order. */
+function toProductSort(sortBy?: string): ProductSort | undefined {
+  if (sortBy === 'price') return 'price-asc';
+  if (sortBy === 'rating') return 'rating-desc';
+  return undefined;
+}
+
 /**
- * Search skincare products from the live API with client-side filtering
+ * Search skincare products from the live API.
+ *
+ * Every filter is applied server-side by /api/products, which pages its results
+ * (20 rows by default, at most 100). Filtering client-side would only ever see
+ * the first page, so the filters are passed as query params and `total` is the
+ * server's count of all matches, not the length of the returned slice.
+ *
+ * As a guard, if the API response does not echo a filter back in `query`, that
+ * filter is applied client-side to the returned page and `filtersAppliedLocally`
+ * says so (in that case `total` can only describe the page).
  */
 export async function searchProducts(input: unknown = {}): Promise<SearchProductsResult> {
   const parsed = SearchProductsInputSchema.safeParse(input ?? {});
@@ -214,58 +279,80 @@ export async function searchProducts(input: unknown = {}): Promise<SearchProduct
     throw new Error(`Invalid search_products arguments: ${formatValidationError(parsed.error)}`);
   }
 
-  const { type, skinType, brand, od, sr, pn, wt, budget, keyword, ingredient, country, limit = 50 } = parsed.data;
+  const { type, skinType, brand, od, sr, pn, wt, budget, keyword, ingredient, country, sort, limit = 50 } = parsed.data;
+  const pageSize = Math.min(limit, 50);
 
-  const url = new URL(`${LIVE_API_URL}/products`);
-  if (type) url.searchParams.set('type', type);
-  if (country) url.searchParams.set('country', country);
-
-  const res = await fetch(url.toString());
-  if (!res.ok) {
-    throw new Error(`Live API error ${res.status}: ${res.statusText}`);
-  }
-
-  const data = (await res.json()) as { products?: SkincareProduct[] };
+  const params = {
+    type,
+    brand,
+    skinType: skinType?.toUpperCase(),
+    od,
+    sr,
+    pn,
+    wt,
+    budget,
+    keyword,
+    ingredient,
+    country,
+    limit: pageSize,
+    // No sort by default: the API's own order (price ascending) is fast, while
+    // rating-desc takes ~8-20s server-side and only a few hundred products are rated.
+    sort,
+  };
+  const data = await fetchProducts(params);
   let products = data.products ?? [];
+  const q = data.query;
 
-  // Client-side filtering
-  if (brand) {
-    const brandLower = brand.toLowerCase();
-    products = products.filter(p => p.brand?.toLowerCase().includes(brandLower));
+  // Runtime check: apply locally only the filters the server did not echo back.
+  const local: string[] = [];
+  if (brand && !serverApplied(q, 'brand')) {
+    local.push('brand');
+    const b = brand.toLowerCase();
+    products = products.filter(p => p.brand?.toLowerCase().includes(b));
   }
-  if (skinType) {
-    const skinTypeUpper = skinType.toUpperCase() as SkinType;
-    products = products.filter(p => (p.skinTypes ?? []).includes(skinTypeUpper));
-  }
-  if (budget != null) {
+  if (budget != null && !serverApplied(q, 'budget')) {
+    local.push('budget');
     products = products.filter(p => p.price <= budget);
   }
-  if (od || sr || pn || wt) {
+  if ((skinType || od || sr || pn || wt) && !serverApplied(q, 'skinType')) {
+    local.push('skinType');
+    if (skinType) {
+      const st = skinType.toUpperCase() as SkinType;
+      products = products.filter(p => (p.skinTypes ?? []).includes(st));
+    }
     products = products.filter(p => matchesSkinType(p.skinTypes ?? [], { od, sr, pn, wt }));
   }
-  if (keyword) {
-    const kwLower = keyword.toLowerCase();
-    products = products.filter(p => {
-      const inName = p.name?.toLowerCase().includes(kwLower) ?? false;
-      const searchKeywords = (p as SkincareProduct & { searchKeywords?: string[] }).searchKeywords ?? [];
-      const inKeywords = searchKeywords.some(k => k.toLowerCase().includes(kwLower));
-      return inName || inKeywords;
-    });
+  if (keyword && !serverApplied(q, 'keyword')) {
+    local.push('keyword');
+    const kw = keyword.toLowerCase();
+    products = products.filter(p => p.name?.toLowerCase().includes(kw));
   }
-  const countWithoutIngredientFilter = ingredient ? products.length : undefined;
+  if (ingredient && !serverApplied(q, 'ingredient')) {
+    local.push('ingredient');
+    const ing = ingredient.toLowerCase();
+    products = products.filter(p => (p.ingredients ?? []).some(i => i.toLowerCase().includes(ing)));
+  }
+  if (type && !serverApplied(q, 'type')) {
+    local.push('type');
+    products = products.filter(p => (p as SkincareProduct & { category?: string }).category === type);
+  }
 
+  products = products.slice(0, pageSize);
+  const total = local.length === 0 && typeof data.total === 'number' ? data.total : products.length;
+
+  // Documented in the tool description: when an ingredient filter is used,
+  // report how many products matched the other filters alone, so the caller
+  // can retry with keyword instead.
+  let availableWithoutIngredient: number | undefined;
   if (ingredient) {
-    const ingLower = ingredient.toLowerCase();
-    products = products.filter(p =>
-      (p.ingredients ?? []).some(ing => ing.toLowerCase().includes(ingLower))
-    );
+    const without = await fetchProducts({ ...params, ingredient: undefined, limit: 1 });
+    availableWithoutIngredient = without.total ?? 0;
   }
-
-  products = products.slice(0, Math.min(limit, 50));
 
   return wrapWithAttribution({
     _product_links_note: 'Each product has a "link" field with its full URL on skinguide.beauty. Always use this URL when presenting products — link the product name to its page.',
-    total: products.length,
+    total,
+    returned: products.length,
     query: {
       type: type ?? 'all',
       brand: brand ?? null,
@@ -279,8 +366,9 @@ export async function searchProducts(input: unknown = {}): Promise<SearchProduct
       ingredient: ingredient ?? null,
     },
     products,
-    ...(countWithoutIngredientFilter !== undefined && {
-      available_without_ingredient_filter: countWithoutIngredientFilter,
+    ...(local.length > 0 && { filtersAppliedLocally: local }),
+    ...(availableWithoutIngredient !== undefined && {
+      available_without_ingredient_filter: availableWithoutIngredient,
     }),
   });
 }
@@ -296,23 +384,27 @@ export async function compareProducts(params: {
   sortBy?: string;
   limit?: number;
 }): Promise<CompareProductsResult> {
-  const { type, skinType, budget, sortBy = 'rating', limit = 3 } = params;
+  const { type, skinType, budget, sortBy, limit = 3 } = params;
   const country = normaliseCountry(params.country);
   const cappedLimit = Math.min(Math.max(limit, 2), 5);
 
-  const result = await searchProducts({ type: type as typeof PRODUCT_TYPES[number], skinType, country, budget, limit: 50 });
-  let products = result.products;
-
-  if (sortBy === 'price') {
-    products = [...products].sort((a, b) => a.price - b.price);
-  }
+  // Sort server-side so the top N are the top N of the whole category, not of one page.
+  const result = await searchProducts({
+    type: type as typeof PRODUCT_TYPES[number],
+    skinType,
+    country,
+    budget,
+    limit: cappedLimit,
+    sort: toProductSort(sortBy),
+  });
+  const products = result.products;
 
   return {
     type,
     skinType,
     country,
     budget,
-    sortBy,
+    sortBy: sortBy ?? 'default',
     products: products.slice(0, cappedLimit),
     total: products.slice(0, cappedLimit).length,
   };
@@ -335,7 +427,7 @@ export async function buildRoutine(params: {
     skinType,
     budget,
     budgetMode = 'per-product',
-    sortBy = 'rating',
+    sortBy,
     gender,
     timeOfDay,
     limit = 3,
@@ -356,14 +448,11 @@ export async function buildRoutine(params: {
         skinType: type,
         country,
         budget: perProductBudget,
-        limit: 50,
+        limit: candidatesPerStep,
+        sort: toProductSort(sortBy),
       });
 
-      let candidates = searchResult.products;
-      if (sortBy === 'price') {
-        candidates = [...candidates].sort((a, b) => a.price - b.price);
-      }
-      candidates = candidates.slice(0, candidatesPerStep);
+      const candidates = searchResult.products.slice(0, candidatesPerStep);
       const lowestPrice = candidates.length > 0 ? Math.min(...candidates.map(p => p.price)) : undefined;
 
       return { ...step, candidates, lowestPrice };
@@ -461,7 +550,7 @@ export async function getRoutine(
     throw new Error(`Unknown skin type "${skinType}". Valid codes: ${SKIN_TYPE_CODES.join(', ')}`);
   }
 
-  const url = new URL(`${LIVE_API_URL}/routine`);
+  const url = new URL(`${LIVE_API_URL}/routines`);
   url.searchParams.set('skinType', type);
   if (gender) url.searchParams.set('gender', gender);
   if (timeOfDay) url.searchParams.set('timeOfDay', timeOfDay);
@@ -471,36 +560,66 @@ export async function getRoutine(
     throw new Error(`Live API error ${res.status}: ${res.statusText}`);
   }
 
-  const data = (await res.json()) as { steps?: RoutineStep[] };
-  let steps: RoutineStep[] = data.steps ?? [];
+  const data = (await res.json()) as {
+    title?: string;
+    url?: string;
+    routineDescription?: string;
+    steps?: Array<{ step: number; product?: string; productType?: string; action: string; timeOfDay: 'AM' | 'PM'; gender?: string | null }>;
+  };
+  const steps: RoutineStep[] = (data.steps ?? []).map(st => ({
+    step: st.step,
+    productType: st.productType ?? st.product ?? '',
+    action: st.action,
+    timeOfDay: st.timeOfDay,
+    ...(st.gender ? { gender: st.gender } : {}),
+  }));
 
   return wrapWithAttribution({
     skinType: type,
+    title: data.title,
+    url: data.url,
+    routineDescription: data.routineDescription,
     steps,
     total: steps.length,
   });
 }
 
-/**
- * Get all available brands
- */
-export async function getBrands(): Promise<GetBrandsResult> {
-  const url = new URL(`${LIVE_API_URL}/products`);
+let _brandsCache: { brands: string[]; ts: number } | null = null;
+const BRANDS_TTL_MS = 10 * 60 * 1000;
 
-  const res = await fetch(url.toString());
-  if (!res.ok) {
-    throw new Error(`Live API error ${res.status}: ${res.statusText}`);
+/**
+ * Get all available brands (cached for 10 minutes).
+ *
+ * Uses /api/searchFilters, which lists every brand in the catalog in one call.
+ * (/api/products pages at 100 rows, so deriving brands from it would need ~280
+ * requests; /api/brands is currently failing on production.) The brand list is
+ * returned as the API provides it; an optional case-insensitive `query`
+ * narrows it.
+ */
+export async function getBrands(query?: string): Promise<GetBrandsResult> {
+  if (!_brandsCache || Date.now() - _brandsCache.ts >= BRANDS_TTL_MS) {
+    const url = new URL(`${LIVE_API_URL}/searchFilters`);
+    const res = await fetch(url.toString());
+    if (!res.ok) {
+      throw new Error(`Live API error ${res.status}: ${res.statusText}`);
+    }
+
+    const data = (await res.json()) as { brands?: unknown[] };
+    const brands = [...new Set(
+      (data.brands ?? [])
+        .filter((b): b is string => typeof b === 'string')
+        .map(b => b.trim())
+        .filter(b => b.length > 0)
+    )].sort((a, b) => a.localeCompare(b));
+
+    _brandsCache = { brands, ts: Date.now() };
   }
 
-  const data = (await res.json()) as { products?: SkincareProduct[] };
-  const products = data.products ?? [];
-
-  const brands = [...new Set(
-    products
-      .map(p => p.brand)
-      .filter((b): b is string => typeof b === 'string' && b.trim().length > 0)
-  )].sort();
-
+  let brands = _brandsCache.brands;
+  if (query) {
+    const ql = query.toLowerCase();
+    brands = brands.filter(b => b.toLowerCase().includes(ql));
+  }
   return wrapWithAttribution({
     brands,
     total: brands.length,
@@ -602,47 +721,130 @@ export function getSkinTypeImage(
 }
 
 /**
- * Get user reviews for a specific product
+ * Get user reviews for a specific product.
+ *
+ * Served by the productReviews Cloud Function (query param `product_id`).
+ * Its `sort=rating` currently returns 500, so on a server error for that sort
+ * the reviews are fetched newest-first and sorted by rating locally.
  */
 export async function getProductReviews(
   product_id: string,
   sort?: string,
   limit?: number
 ): Promise<GetProductReviewsResult> {
-  const url = new URL(`${LIVE_API_URL}/products/${encodeURIComponent(product_id)}/reviews`);
-  if (sort) url.searchParams.set('sort', sort);
-  if (limit != null) url.searchParams.set('limit', String(limit));
+  const fetchReviews = async (sortParam?: string) => {
+    const url = new URL(`${FUNCTIONS_URL}/productReviews`);
+    url.searchParams.set('product_id', product_id);
+    if (sortParam) url.searchParams.set('sort', sortParam);
+    if (limit != null) url.searchParams.set('limit', String(limit));
+    return fetch(url.toString());
+  };
 
-  const res = await fetch(url.toString());
+  let res = await fetchReviews(sort);
+  let sortedLocally = false;
+  if (!res.ok && res.status >= 500 && sort === 'rating') {
+    res = await fetchReviews('recent');
+    sortedLocally = true;
+  }
   if (!res.ok) {
     throw new Error(`Live API error ${res.status}: ${res.statusText}`);
   }
 
-  const data = (await res.json()) as { reviews?: GetProductReviewsResult['reviews'] };
-  const reviews = data.reviews ?? [];
+  const data = (await res.json()) as {
+    reviews?: GetProductReviewsResult['reviews'];
+    product_name?: string | null;
+    avg_rating?: number | null;
+    review_count?: number | null;
+  };
+  let reviews = data.reviews ?? [];
+  if (sortedLocally) {
+    reviews = [...reviews].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
+  }
 
-  return { product_id, reviews, total: reviews.length };
+  return {
+    product_id,
+    product_name: data.product_name ?? null,
+    avg_rating: data.avg_rating ?? null,
+    review_count: data.review_count ?? null,
+    reviews,
+    total: reviews.length,
+    ...(sortedLocally && { _note: "sort=rating failed upstream; reviews were fetched newest-first and sorted by rating locally." }),
+  };
+}
+
+/**
+ * Ingredient catalog fields that may be passed through.
+ *
+ * The catalog's `description` and `quick_facts` are INCIDecoder's prose word
+ * for word, so they are never redistributed. Only structured fields are kept
+ * (an allowlist, so a new upstream prose field is dropped by default), and
+ * the credit says specifically what came from INCIDecoder. This matches the
+ * rule skinguide.beauty itself follows: "Functions and safety ratings sourced
+ * from Incidecoder."
+ */
+const INGREDIENT_FIELDS = [
+  'name',
+  'slug',
+  'also_called',
+  'what_it_does',
+  'all_functions',
+  'comedogenicity',
+  'irritancy',
+  'our_take',
+  'source_url',
+] as const;
+
+function sanitiseIngredient(raw: unknown): IngredientDetail | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const src = raw as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const k of INGREDIENT_FIELDS) {
+    // Keep explicit nulls (e.g. comedogenicity not rated); drop absent/empty.
+    if (src[k] !== undefined && src[k] !== '') out[k] = src[k];
+  }
+  return out as unknown as IngredientDetail;
+}
+
+/** Replaces the generic _note on ingredient results so it does not claim the data as skinguide.beauty's. */
+const INGREDIENT_NOTE =
+  'Ingredient data is served by skinguide.beauty, but these fields come from Incidecoder (INKEEDecoder). ' +
+  'When presenting them, credit Incidecoder as _data_credit states; do not present them as skinguide.beauty\'s own content.';
+
+function ingredientCredit(sourceUrl?: unknown): string {
+  const url = typeof sourceUrl === 'string' && sourceUrl ? sourceUrl : 'https://incidecoder.com';
+  return `Functions and safety ratings sourced from Incidecoder (now INKEEDecoder): ${url}. Ingredient descriptions are not included.`;
 }
 
 /**
  * Get enriched ingredient list for a specific product
  */
 export async function getProductIngredients(product_id: string): Promise<GetProductIngredientsResult> {
-  const url = new URL(`${LIVE_API_URL}/products/${encodeURIComponent(product_id)}/ingredients`);
+  const url = new URL(`${FUNCTIONS_URL}/productIngredients`);
+  url.searchParams.set('product_id', product_id);
 
   const res = await fetch(url.toString());
   if (!res.ok) {
     throw new Error(`Live API error ${res.status}: ${res.statusText}`);
   }
 
-  const data = (await res.json()) as { ingredients?: Array<{ name: string; detail?: IngredientDetail }> };
-  const ingredients = data.ingredients ?? [];
-
-  return wrapWithAttribution({
-    product_id,
-    ingredients,
-    total: ingredients.length,
+  const data = (await res.json()) as { ingredients?: Array<{ name: string; detail?: unknown }> };
+  // `detail` is currently always absent upstream; if it appears, apply the
+  // same no-prose rule as get_ingredient_info.
+  const ingredients: Array<{ name: string; detail?: IngredientDetail }> = (data.ingredients ?? []).map(i => {
+    const detail = sanitiseIngredient(i.detail);
+    return detail ? { name: i.name, detail } : { name: i.name };
   });
+  const hasDetail = ingredients.some(i => i.detail);
+
+  return {
+    ...wrapWithAttribution({
+      product_id,
+      ingredients,
+      total: ingredients.length,
+      ...(hasDetail ? { _data_credit: ingredientCredit('https://incidecoder.com') } : {}),
+    }),
+    ...(hasDetail ? { _note: INGREDIENT_NOTE } : {}),
+  };
 }
 
 /**
@@ -653,7 +855,7 @@ export async function getIngredientInfo(slug?: string, name?: string): Promise<G
     throw new Error('Provide at least one of: slug or name');
   }
 
-  const url = new URL(`${LIVE_API_URL}/ingredients`);
+  const url = new URL(`${FUNCTIONS_URL}/ingredientInfo`);
   if (slug) url.searchParams.set('slug', slug);
   if (name) url.searchParams.set('name', name);
 
@@ -665,11 +867,15 @@ export async function getIngredientInfo(slug?: string, name?: string): Promise<G
     throw new Error(`Live API error ${res.status}: ${res.statusText}`);
   }
 
-  const data = (await res.json()) as { ingredient?: IngredientDetail };
-  const ingredient = data.ingredient ?? null;
+  const data = (await res.json()) as { ingredient?: unknown };
+  const ingredient = sanitiseIngredient(data.ingredient);
 
-  return wrapWithAttribution({
-    ingredient,
-    found: ingredient !== null,
-  });
+  return {
+    ...wrapWithAttribution({
+      ingredient,
+      found: ingredient !== null,
+      ...(ingredient ? { _data_credit: ingredientCredit(ingredient.source_url) } : {}),
+    }),
+    ...(ingredient ? { _note: INGREDIENT_NOTE } : {}),
+  };
 }

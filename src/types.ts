@@ -47,7 +47,12 @@ export interface SearchProductsParams {
 }
 
 export interface SearchProductsResult {
+  /** Server-side count of all matching products (not just the returned page). */
   total: number;
+  /** Number of products in this response. */
+  returned: number;
+  /** Filters the API did not apply and that were applied to the returned page only. */
+  filtersAppliedLocally?: string[];
   query: {
     type: string;
     brand: string | null;
@@ -98,6 +103,9 @@ export interface RoutineStep {
 
 export interface GetRoutineResult {
   skinType: SkinType;
+  title?: string;
+  url?: string;
+  routineDescription?: string;
   steps: RoutineStep[];
   total: number;
 }
@@ -109,19 +117,24 @@ export interface GetBrandsResult {
 
 export interface TestQuestionOption {
   text: string;
-  value: number;
+  /** Score contributed to the question's section when this option is chosen. */
+  score: number;
 }
 
+/** Shape returned by GET /api/testQuestions. */
 export interface TestQuestion {
   id: string;
-  dimension: 'O_D' | 'S_R' | 'P_N' | 'W_T';
-  question: string;
+  section: 'O_D' | 'S_R' | 'P_N' | 'W_T';
+  text: string;
   options: TestQuestionOption[];
+  order?: number;
 }
 
 export interface GetTestQuestionsResult {
   questions: TestQuestion[];
   total: number;
+  sections?: string[];
+  sectionLabels?: Record<string, string>;
 }
 
 export interface SubmitTestAnswerInput {
@@ -166,28 +179,41 @@ export interface BuildRoutineResult {
   estimatedMinCost?: number;
 }
 
+/** Shape returned by the productReviews Cloud Function. */
 export interface ProductReview {
-  id?: string;
+  reviewId?: string;
   rating: number;
   comment?: string;
-  skinType?: string;
-  date?: string;
+  userSkinType?: string;
+  userAgeRange?: string;
+  createdAt?: string;
 }
 
 export interface GetProductReviewsResult {
   product_id: string;
+  product_name?: string | null;
+  avg_rating?: number | null;
+  review_count?: number | null;
+  _note?: string;
   reviews: ProductReview[];
   total: number;
 }
 
+/**
+ * Structured ingredient fields passed through from the ingredient catalog.
+ * Prose fields (description, quick_facts) are INCIDecoder's text and are
+ * deliberately excluded.
+ */
 export interface IngredientDetail {
-  slug: string;
   name: string;
-  description?: string;
-  comedogenicity?: number | null;
-  irritancy?: number | null;
-  whatItDoes?: string[];
-  expertTake?: string;
+  slug: string;
+  also_called?: string;
+  what_it_does?: string;
+  all_functions?: string;
+  comedogenicity?: string | number | null;
+  irritancy?: string | number | null;
+  our_take?: string;
+  source_url?: string;
 }
 
 export interface ProductIngredient {
@@ -197,6 +223,7 @@ export interface ProductIngredient {
 
 export interface GetProductIngredientsResult {
   product_id: string;
+  _data_credit?: string;
   ingredients: ProductIngredient[];
   total: number;
 }
@@ -204,6 +231,8 @@ export interface GetProductIngredientsResult {
 export interface GetIngredientInfoResult {
   ingredient: IngredientDetail | null;
   found: boolean;
+  /** Says which data came from INCIDecoder; present when an ingredient is found. */
+  _data_credit?: string;
 }
 
 export type SkinTypeImageRace = 'Asian' | 'Black' | 'Latin' | 'White';

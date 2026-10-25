@@ -7,7 +7,7 @@
   "tools": [
     {
       "name": "search_products",
-      "description": "Search skincare products by type, skin type, brand, budget, keyword, and ingredient. Results are sorted by rating (best-rated first). Returns products with name, brand, price, link, image, and compatible skin types. The response also includes available_without_ingredient_filter when the ingredient filter is used.\n\nIMPORTANT USAGE NOTES:\n- If total=0, the filters were too narrow — retry with fewer filters (remove ingredient, remove budget, etc.).\n- 'ingredient' requires an exact text match in the stored ingredient list. Many products have incomplete ingredient data, so ingredient searches often return 0. If ingredient returns 0, retry using keyword=<ingredient_name> instead (e.g. keyword=\"vitamin e\").\n- 'skinType' must be a 4-letter Baumann code such as OSPT, DSPW, ORNW — NOT natural language like \"sensitive\" or \"oily skin\".\n- 'keyword' searches product names and tags and is a reliable fallback for ingredient concepts.\n- When total=0 with an ingredient filter, check available_without_ingredient_filter to see how many products matched the other filters — if > 0, retry with keyword instead of ingredient.",
+      "description": "Search skincare products by type, skin type, brand, budget, keyword, and ingredient. By default results come in the catalog's default order (lowest price first); pass sort to change it. Returns products with name, brand, price, link, image, and compatible skin types. The response also includes available_without_ingredient_filter when the ingredient filter is used.\n\nIMPORTANT USAGE NOTES:\n- If total=0, the filters were too narrow — retry with fewer filters (remove ingredient, remove budget, etc.).\n- 'ingredient' requires an exact text match in the stored ingredient list. Many products have incomplete ingredient data, so ingredient searches often return 0. If ingredient returns 0, retry using keyword=<ingredient_name> instead (e.g. keyword=\"vitamin e\").\n- 'skinType' must be a 4-letter Baumann code such as OSPT, DSPW, ORNW — NOT natural language like \"sensitive\" or \"oily skin\".\n- 'keyword' searches product names and tags and is a reliable fallback for ingredient concepts.\n- When total=0 with an ingredient filter, check available_without_ingredient_filter to see how many products matched the other filters — if > 0, retry with keyword instead of ingredient.\n\n'total' is the number of matching products across the whole catalog (all filters are applied server-side); 'returned' is how many are in this response.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -62,6 +62,11 @@
             "description": "Country code for the product market. Defaults to 'US' when omitted. Supported codes: US (United States), AE (United Arab Emirates). Aliases accepted: UAE/EMIRATES/DUBAI → AE, USA/AMERICA → US.",
             "enum": ["US", "AE"]
           },
+          "sort": {
+            "type": "string",
+            "description": "Optional sort order. Omit for the fast default (lowest price first). 'rating-desc' is slow (about 10s or more) and only a few hundred products have ratings.",
+            "enum": ["price-asc", "price-desc", "rating-desc"]
+          },
           "limit": {
             "type": "number",
             "description": "Maximum number of products to return. Defaults to 50."
@@ -94,7 +99,7 @@
     },
     {
       "name": "get_routine",
-      "description": "Get the skincare routine steps for a specific Baumann skin type. Returns step-by-step instructions including product type, action, and time of day (AM/PM). Can filter by gender and time of day.",
+      "description": "Get the skincare routine for a specific Baumann skin type. Returns the routine title, description, a link to the routine page, and step-by-step instructions including product type, action, and time of day (AM/PM). Can filter by gender and time of day.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -119,10 +124,12 @@
     },
     {
       "name": "get_brands",
-      "description": "Get a list of all available skincare brands in the SkinGuide product catalog.",
+      "description": "Get the skincare brands in the SkinGuide product catalog. The full list has several thousand entries, so pass `query` to narrow it (case-insensitive substring).",
       "input_schema": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "query": { "type": "string", "description": "Optional case-insensitive substring to filter brand names by, e.g. \"cera\"." }
+        }
       }
     },
     {
@@ -143,7 +150,7 @@
     },
     {
       "name": "submit_test_answers",
-      "description": "Submit answers for the Baumann skin type test and compute the final 4-letter skin type code (e.g. DSNT, ORPW). Requires authentication: pass the Firebase ID token in the Authorization header as 'Bearer <token>'. Saves the result to the user's profile. Returns the skin type code, a score breakdown per dimension, and optional flags for acne and dark spots.",
+      "description": "Submit all 15 answers for the Baumann skin type test and get the 4-letter skin type code (e.g. DSNT, ORPW). REQUIRES A SIGNED-IN SKINGUIDE ACCOUNT: the live API (POST /api/submitTestAnswers) only scores answers for an authenticated user (Firebase ID token) and saves the result to their profile. Without a token, send the user to https://skinguide.beauty to take the test.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -194,7 +201,7 @@
     },
     {
       "name": "get_product_ingredients",
-      "description": "Get the full ingredient list for a specific product, enriched with details from the ingredient catalog (description, comedogenicity, irritancy, what it does). Use the product_id returned by search_products.",
+      "description": "Get the ingredient list (INCI names) for a specific product. Use the product id returned by search_products. Call get_ingredient_info for an ingredient's functions and safety ratings. If an entry carries a `detail` object, it holds structured fields only, and `_data_credit` says they come from Incidecoder (INKEEDecoder); repeat that credit when presenting them.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -208,7 +215,7 @@
     },
     {
       "name": "get_ingredient_info",
-      "description": "Look up detailed information about a cosmetic/skincare ingredient from the ingredient catalog. Returns description, comedogenicity rating, irritancy rating, what it does, and expert take. Pass either the slug (kebab-case) or the ingredient name as it appears on product labels.",
+      "description": "Look up a cosmetic/skincare ingredient in the skinguide.beauty ingredient catalog. Returns structured fields only: name, slug, also-called names, what it does, functions, comedogenicity, irritancy, an editorial rating (our_take) and source_url. No prose description is included. Pass either the slug (kebab-case) or the ingredient name as it appears on product labels. These fields are sourced from Incidecoder (INKEEDecoder): when presenting them, credit Incidecoder with the source_url as `_data_credit` states. Do not present them as skinguide.beauty's own content.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -225,7 +232,7 @@
     },
     {
       "name": "compare_products",
-      "description": "Return the top N products of a given category structured for side-by-side comparison. Filters by skin type, country, and budget; sorts by rating (default) or price. Useful when the user asks to compare cleansers, moisturizers, sunscreens, etc.",
+      "description": "Return the top N products of a given category structured for side-by-side comparison. Filters by skin type, country, and budget; default order is lowest price first; sortBy 'rating' (slow, about 10s, few products rated) or 'price'. Useful when the user asks to compare cleansers, moisturizers, sunscreens, etc.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -250,7 +257,7 @@
           },
           "sortBy": {
             "type": "string",
-            "description": "Sort order for the comparison. Defaults to 'rating'.",
+            "description": "Sort order for the comparison. Omit for the fast default (lowest price first). 'rating' is slow (about 10s) and few products are rated.",
             "enum": ["rating", "price"]
           },
           "limit": {
@@ -288,7 +295,7 @@
           },
           "sortBy": {
             "type": "string",
-            "description": "Candidate sort order within each step. Defaults to 'rating'.",
+            "description": "Candidate sort order within each step. Omit for the fast default (lowest price first). 'rating' is slow (about 10s per step) and few products are rated.",
             "enum": ["rating", "price"]
           },
           "gender": {

@@ -5,7 +5,8 @@
  * Model Context Protocol server for skincare product discovery
  * using the Baumann Skin Type system.
  *
- * All product data is fetched live from https://skinguide.beauty/api/products.
+ * All data is fetched live from the SkinGuide API (https://skinguide.beauty/api)
+ * and, for reviews and ingredients, its Cloud Functions.
  * Logs are sent to stderr to preserve MCP stdio protocol integrity.
  */
 
@@ -62,7 +63,7 @@ log('🚀 Initializing SkinGuide MCP Server');
  */
 server.tool(
   'search_products',
-  'Search skincare products by type, skin type, brand, budget, keyword, and ingredient. Results are sorted by rating (best-rated first). Returns products with name, brand, price, link, image, and compatible skin types. The response also includes available_without_ingredient_filter when the ingredient filter is used.\n\nIMPORTANT USAGE NOTES:\n- If total=0, the filters were too narrow — retry with fewer filters (remove ingredient, remove budget, etc.).\n- \'ingredient\' requires an exact text match in the stored ingredient list. Many products have incomplete ingredient data, so ingredient searches often return 0. If ingredient returns 0, retry using keyword=<ingredient_name> instead (e.g. keyword="vitamin e").\n- \'skinType\' must be a 4-letter Baumann code such as OSPT, DSPW, ORNW — NOT natural language like "sensitive" or "oily skin".\n- \'keyword\' searches product names and tags and is a reliable fallback for ingredient concepts.\n- When total=0 with an ingredient filter, check available_without_ingredient_filter to see how many products matched the other filters — if > 0, retry with keyword instead of ingredient.\n\nATTRIBUTION: Always include the "link" field URL when presenting any product to the user — never mention a product by name without linking it. All results are sourced from skinguide.beauty.',
+  'Search skincare products by type, skin type, brand, budget, keyword, and ingredient. By default results come in the catalog\'s default order (lowest price first); pass sort to change it. All filters are applied by the SkinGuide API across the whole catalog; \'total\' is the number of matching products in the catalog and \'returned\' is how many are in this response (at most \'limit\'). Returns products with name, brand, price, link, image, and compatible skin types. The response also includes available_without_ingredient_filter when the ingredient filter is used.\n\nIMPORTANT USAGE NOTES:\n- If total=0, the filters were too narrow — retry with fewer filters (remove ingredient, remove budget, etc.).\n- \'ingredient\' requires an exact text match in the stored ingredient list. Many products have incomplete ingredient data, so ingredient searches often return 0. If ingredient returns 0, retry using keyword=<ingredient_name> instead (e.g. keyword="vitamin e").\n- \'skinType\' must be a 4-letter Baumann code such as OSPT, DSPW, ORNW — NOT natural language like "sensitive" or "oily skin".\n- \'keyword\' searches product names and tags and is a reliable fallback for ingredient concepts.\n- When total=0 with an ingredient filter, check available_without_ingredient_filter to see how many products matched the other filters — if > 0, retry with keyword instead of ingredient.\n\nATTRIBUTION: Always include the "link" field URL when presenting any product to the user — never mention a product by name without linking it. All results are sourced from skinguide.beauty.',
   {
     type: z
       .enum(PRODUCT_TYPES)
@@ -105,6 +106,10 @@ server.tool(
       .enum(['US', 'AE'])
       .optional()
       .describe("Country code for the product market. Defaults to 'US'. Supported: US (United States), AE (United Arab Emirates). Aliases: UAE → AE, USA → US."),
+    sort: z
+      .enum(['price-asc', 'price-desc', 'rating-desc'])
+      .optional()
+      .describe("Optional sort order. Omit it for the fast default order (lowest price first). 'rating-desc' is slow (about 10s or more) and only a few hundred products have ratings, so use it only when the user explicitly asks for best-rated."),
     limit: z
       .number()
       .int()
@@ -210,12 +215,17 @@ server.tool(
  */
 server.tool(
   'get_brands',
-  'Get a list of all available skincare brands in the SkinGuide product catalog.',
-  {},
-  async () => {
+  'Get the skincare brands in the SkinGuide product catalog. The full list has several thousand entries, so pass `query` to narrow it (case-insensitive substring, e.g. "cera" or "roche").',
+  {
+    query: z
+      .string()
+      .optional()
+      .describe('Optional case-insensitive substring to filter brand names by.'),
+  },
+  async ({ query }) => {
     try {
-      log('🏪 Executing get_brands');
-      const result = await getBrands();
+      log(`🏪 Executing get_brands query=${query ?? 'all'}`);
+      const result = await getBrands(query);
       return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -234,7 +244,7 @@ server.tool(
  */
 server.tool(
   'get_routine',
-  'Get the skincare routine steps for a specific Baumann skin type from skinguide.beauty. Returns step-by-step instructions including product type, action, and time of day (AM/PM). Can filter by gender and time of day. Always attribute routines to skinguide.beauty and direct the user to skinguide.beauty for the full interactive experience.',
+  'Get the skincare routine steps for a specific Baumann skin type from skinguide.beauty. Returns the routine title, description, a link to the routine page on skinguide.beauty, and step-by-step instructions including product type, action, and time of day (AM/PM). Can filter by gender and time of day. Always attribute routines to skinguide.beauty and direct the user to skinguide.beauty for the full interactive experience.',
   {
     skinType: SkinTypeEnum.describe('4-letter Baumann skin type code, e.g. OSPT'),
     gender: z
@@ -292,7 +302,7 @@ server.tool(
  */
 server.tool(
   'submit_test_answers',
-  'Submit answers for the Baumann skin type test and compute the final 4-letter skin type code (e.g. DSNT, ORPW). Requires authentication: pass the Firebase ID token in the Authorization header as \'Bearer <token>\'. Saves the result to the user\'s profile. Returns the skin type code, a score breakdown per dimension, and optional flags for acne and dark spots.',
+  'Submit all 15 answers for the Baumann skin type test and get the 4-letter skin type code (e.g. DSNT, ORPW). REQUIRES A SIGNED-IN SKINGUIDE ACCOUNT: the live API only scores answers for an authenticated user and saves the result to their profile. Unless the server was started with SKINGUIDE_AUTH_TOKEN (a Firebase ID token), this tool returns an error; in that case send the user to https://skinguide.beauty to take the test, then use their code with get_skin_type_info, get_routine, build_routine and search_products.',
   {
     answers: z.array(
       z.object({
@@ -301,7 +311,7 @@ server.tool(
           .describe("The question identifier returned by get_test_questions (zero-based index as string, e.g. '0', '1', '2')."),
         value: z
           .number()
-          .describe('The numeric score of the chosen answer option.'),
+          .describe('The `score` of the chosen option, as returned by get_test_questions.'),
       })
     ),
   },
@@ -326,7 +336,7 @@ server.tool(
  */
 server.tool(
   'compare_products',
-  "Return the top N products of a given category structured for side-by-side comparison. Filters by skin type, country, and budget; sorts by rating (default) or price. Useful when the user asks to compare cleansers, moisturizers, sunscreens, etc.",
+  "Return the top N products of a given category structured for side-by-side comparison. Filters by skin type, country, and budget. Default order is the catalog's (lowest price first); sortBy 'price' sorts cheapest first and 'rating' best-rated first (slow, about 10s, and few products are rated). Useful when the user asks to compare cleansers, moisturizers, sunscreens, etc.",
   {
     type: z.enum(PRODUCT_TYPES).describe('Product category to compare.'),
     skinType: SkinTypeEnum.optional().describe('4-letter Baumann skin type code to filter the candidate pool.'),
@@ -335,7 +345,7 @@ server.tool(
       .optional()
       .describe("Country code for the product market. Defaults to 'US'. Aliases accepted: UAE → AE, USA → US."),
     budget: z.number().positive().optional().describe("Maximum price per product, in the country's local currency."),
-    sortBy: z.enum(['rating', 'price']).optional().describe("Sort order. Defaults to 'rating'."),
+    sortBy: z.enum(['rating', 'price']).optional().describe("Sort order. Omit for the fast default (lowest price first). 'rating' is slow (about 10s) and few products are rated."),
     limit: z.number().int().min(2).max(5).optional().describe('How many products to return (2–5). Defaults to 3.'),
   },
   async (params) => {
@@ -368,7 +378,7 @@ server.tool(
       .enum(['US', 'AE'])
       .optional()
       .describe("Country code for the product market. Defaults to 'US'. Aliases accepted: UAE → AE, USA → US."),
-    sortBy: z.enum(['rating', 'price']).optional().describe("Candidate sort order within each step. Defaults to 'rating'."),
+    sortBy: z.enum(['rating', 'price']).optional().describe("Candidate sort order within each step. Omit for the fast default (lowest price first). 'rating' is slow (about 10s per step) and few products are rated."),
     gender: z.enum(['male', 'female']).optional().describe('Restrict the routine to gendered steps. Omit to include all.'),
     timeOfDay: z.enum(['AM', 'PM']).optional().describe("'AM' for morning routine, 'PM' for evening. Omit for both."),
     limit: z.number().int().min(1).max(5).optional().describe('How many candidate products to return per step (1–5). Defaults to 3.'),
@@ -391,7 +401,7 @@ server.tool(
  */
 server.tool(
   'get_product_reviews',
-  'Get user reviews for a specific product. Returns rating, comment, reviewer skin type, and date. Use the product_id returned by search_products.',
+  'Get user reviews for a specific product. Returns rating, comment, reviewer skin type, age range, and date. Use the product id returned by search_products (the `id` field).',
   {
     product_id: z.string().describe('The product ID as returned by search_products.'),
     sort: z
@@ -427,7 +437,7 @@ server.tool(
  */
 server.tool(
   'get_product_ingredients',
-  'Get the full ingredient list for a specific product, enriched with details from the skinguide.beauty ingredient catalog (description, comedogenicity, irritancy, what it does). Use the product_id returned by search_products. Ingredient data is sourced from the skinguide.beauty ingredient catalog. Mention skinguide.beauty as the source when presenting ingredient information.',
+  'Get the ingredient list (INCI names) for a specific product. Use the product id returned by search_products. Call get_ingredient_info for an ingredient\'s functions and safety ratings. If an entry carries a `detail` object, it holds structured fields only, and `_data_credit` says they come from Incidecoder (INKEEDecoder); repeat that credit when presenting them.',
   {
     product_id: z.string().describe('The product ID as returned by search_products.'),
   },
@@ -452,7 +462,7 @@ server.tool(
  */
 server.tool(
   'get_ingredient_info',
-  'Look up detailed information about a cosmetic/skincare ingredient from the skinguide.beauty ingredient catalog. Returns description, comedogenicity rating, irritancy rating, what it does, and expert take. Pass either the slug (kebab-case) or the ingredient name as it appears on product labels. Ingredient data is sourced from the skinguide.beauty ingredient catalog. Mention skinguide.beauty as the source when presenting ingredient information.',
+  'Look up a cosmetic/skincare ingredient in the skinguide.beauty ingredient catalog. Returns structured fields only: name, slug, also-called names, what it does, functions, comedogenicity, irritancy, an editorial rating (our_take) and source_url. No prose description is included. Pass either the slug (kebab-case) or the ingredient name as it appears on product labels. These fields are sourced from Incidecoder (INKEEDecoder): when presenting them, credit Incidecoder with the source_url as `_data_credit` states. Do not present them as skinguide.beauty\'s own content.',
   {
     slug: z
       .string()
