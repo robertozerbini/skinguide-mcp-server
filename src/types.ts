@@ -195,6 +195,8 @@ export interface GetProductReviewsResult {
   avg_rating?: number | null;
   review_count?: number | null;
   _note?: string;
+  /** Reviews are third-party user text; see the note's wording. */
+  _untrusted: string;
   reviews: ProductReview[];
   total: number;
 }
