@@ -31,7 +31,7 @@
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",
-    "zod": "^3.24.2"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
@@ -48,5 +48,8 @@
   },
   "bugs": {
     "url": "https://github.com/robertozerbini/skinguide-mcp-server/issues"
+  },
+  "overrides": {
+    "qs": "^6.17.1"
   }
 }
