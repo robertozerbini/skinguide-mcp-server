@@ -139,7 +139,7 @@ Do not invent products, prices, links, ratings or ingredient data to fill the
 gap. You may still explain the Baumann system in general terms and point the
 user to [skinguide.beauty](https://skinguide.beauty).
 
-## Baumann skin types in one table
+## Baumann skin types at a glance
 
 Four axes, one letter each: **O**ily / **D**ry, **S**ensitive / **R**esistant,
 **P**igmented / **N**on-pigmented, **W**rinkled / **T**ight - 16 types in all,
