@@ -117,7 +117,7 @@ npm start
 The package is **not published on npm**; `npx` installs it straight from this GitHub repository. The `prepare` script compiles TypeScript to `dist/` during install, so nothing needs to be built by hand. The server fetches live data from `https://skinguide.beauty/api`.
 
 ```bash
-npx -y github:robertozerbini/skinguide-mcp-server
+npx -y github:robertozerbini/skinguide-mcp-server#v1.2.0
 ```
 
 The package has a single executable (`skinguide`), so `npx` runs it without a `--package` flag. The first run takes a little longer while it installs and compiles.
@@ -138,7 +138,7 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json`:
   "mcpServers": {
     "skinguide": {
       "command": "npx",
-      "args": ["-y", "github:robertozerbini/skinguide-mcp-server"]
+      "args": ["-y", "github:robertozerbini/skinguide-mcp-server#v1.2.0"]
     }
   }
 }
@@ -153,7 +153,7 @@ Edit `.cursor/mcp.json`:
   "mcpServers": {
     "skinguide": {
       "command": "npx",
-      "args": ["-y", "github:robertozerbini/skinguide-mcp-server"]
+      "args": ["-y", "github:robertozerbini/skinguide-mcp-server#v1.2.0"]
     }
   }
 }
