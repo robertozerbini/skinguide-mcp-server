@@ -741,6 +741,8 @@ The MCP server communicates over stdio and works with any AI client that support
 
 For a deeper look at the JSON-RPC 2.0 request/response format used over the wire, see the demo clients in the `examples/` directory.
 
+An agent skill that teaches AI agents when and how to use these tools (the source of the Agensi listing) lives in [`agensi-skill/`](agensi-skill/).
+
 ---
 
 ## Google Colab Notebook
