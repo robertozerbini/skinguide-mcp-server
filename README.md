@@ -62,6 +62,8 @@ AI agents, LLM applications, and developer tools can:
 
 ## Tools
 
+The server exposes **13 tools**, listed below. These are the tools registered in `src/index.ts` and advertised in `.well-known/mcp.json`. (`get_skin_type_image`, documented under [Tool Reference](#get_skin_type_image), is implemented but **not exposed**.)
+
 | Tool | Description |
 |---|---|
 | `search_products` | Search products by skin type, brand, category, budget, keyword, and ingredient |
@@ -188,6 +190,8 @@ curl https://skinguide.beauty/.well-known/mcp.json
 | Variable | Default | Description |
 |---|---|---|
 | `LIVE_API_URL` | `https://skinguide.beauty/api` | Base URL for the live SkinGuide API |
+| `SKINGUIDE_FUNCTIONS_URL` | `https://us-central1-vanity-e971f.cloudfunctions.net` | Base URL for the Cloud Functions that serve reviews, product ingredients and ingredient info |
+| `SKINGUIDE_AUTH_TOKEN` | *(unset)* | Optional. Firebase ID token for a signed-in SkinGuide account. Needed only by `submit_test_answers`; every other tool reads public data and works without it. See [submit_test_answers](#submit_test_answers). |
 
 ---
 
@@ -321,25 +325,30 @@ Response:
 
 `total` is the number of matching products across the whole catalog; `returned` is how many are in this response (at most `limit`). All filters are applied by the SkinGuide API.
 
+Each product's `id` is a 32-character hex string. Pass it unchanged as `product_id` to `get_product_reviews` and `get_product_ingredients`. Product fields are passed through from the live API, so the category is in `category` (not `type`). The excerpt below is from a live response; values change as the catalog and prices are refreshed.
+
 ```json
 {
-  "total": 5,
+  "total": 8873,
   "returned": 1,
-  "query": { "type": "all", "skinType": null, "od": "O", "sr": "S", "pn": null, "wt": null, "budget": 30, "keyword": null, "ingredient": null },
+  "query": { "type": "all", "brand": null, "skinType": null, "od": "O", "sr": "S", "pn": null, "wt": null, "budget": 30, "keyword": null, "ingredient": null },
   "products": [
     {
-      "id": 534,
-      "name": "Persa-Gel 10 Oil-Free Acne Spot Treatment",
-      "brand": "Clean & Clear",
-      "type": "Treatment",
-      "price": 5.97,
+      "id": "63edd23a257fd7df5212867be411cd02",
+      "name": "Age Perfect 4-in-1 Tinted Face Balm Foundation with Firming Serum, Deep 20, 0.61 Ounce",
+      "brand": "L'Oreal Paris",
+      "category": "Foundation",
+      "price": 1.52,
       "currency": "$",
-      "vegan": false,
-      "ingredients": ["Benzoyl Peroxide 10%"],
-      "image": "https://m.media-amazon.com/images/I/612wW4IikOL._AC_UL320_.jpg",
-      "link": "https://amzn.to/4aTFj3m",
       "country": "US",
-      "skinTypes": ["OSPT"]
+      "sizeLabel": "0.61 oz",
+      "image": "https://m.media-amazon.com/images/I/71LdS8U9N8L._AC_UL320_.jpg",
+      "link": "https://www.amazon.com/dp/B09HLB78JP/?tag=robertoz-20",
+      "isVegan": false,
+      "skinTypes": ["ORNT", "ORNW", "ORPT", "ORPW", "OSNT", "OSNW", "OSPT", "OSPW"],
+      "avg_rating": 0,
+      "review_count": 0,
+      "ingredients": []
     }
   ]
 }
@@ -363,23 +372,26 @@ Example — AM routine for OSPT:
 { "skinType": "OSPT", "timeOfDay": "AM" }
 ```
 
-Response:
+Response (excerpt from a live response; some steps omitted):
 
 ```json
 {
   "skinType": "OSPT",
-  "title": "...",
+  "title": "💫 OSPT Skin Type: The Balancer",
   "url": "https://skinguide.beauty/routine/OSPT",
   "routineDescription": "...",
-  "total": 4,
   "steps": [
-    { "step": 1, "productType": "Cleanser",    "action": "Cleanse",          "timeOfDay": "AM" },
-    { "step": 2, "productType": "Toner",        "action": "Tone",             "timeOfDay": "AM" },
-    { "step": 3, "productType": "Serum",        "action": "Apply serum",      "timeOfDay": "AM" },
-    { "step": 4, "productType": "Sunscreen",    "action": "Apply sunscreen",  "timeOfDay": "AM" }
-  ]
+    { "step": 1, "productType": "Cleanser",       "action": "Wash with cleanser",                                   "timeOfDay": "AM", "gender": "All" },
+    { "step": 3, "productType": "Skin Lightener", "action": "Apply a skin lightener",                               "timeOfDay": "AM", "gender": "All" },
+    { "step": 4, "productType": "Acne Treatment", "action": "Apply a benzoyl peroxide product to acne-prone areas", "timeOfDay": "AM", "gender": "All" },
+    { "step": 6, "productType": "Sunscreen",      "action": "Apply sunscreen",                                      "timeOfDay": "AM", "gender": "All" },
+    { "step": 7, "productType": "Foundation",     "action": "Apply SPF-containing makeup",                          "timeOfDay": "AM", "gender": "Women" }
+  ],
+  "total": 7
 }
 ```
+
+Each step's `productType` is one of the `get_product_types` categories, so it can be passed as `type` to `search_products` or `compare_products`.
 
 ---
 
@@ -626,9 +638,9 @@ Response:
   "sortBy": "default",
   "total": 3,
   "products": [
-    { "id": 12, "name": "CeraVe Foaming Cleanser", "brand": "CeraVe", "price": 14.99, ... },
-    { "id": 87, "name": "La Roche-Posay Toleriane", "brand": "La Roche-Posay", "price": 18.5, ... },
-    { "id": 34, "name": "Neutrogena Oil-Free Wash", "brand": "Neutrogena", "price": 8.97, ... }
+    { "id": "622eb30e541627f1a0f6539b70c21a6e", "name": "Face Cleansing Bar - Fragrance Free - 3.5 oz", "brand": "Neutrogena", "category": "Cleanser", "price": 2.97, ... },
+    { "id": "728093386e30397b4a7a04a8f4fb1f02", "name": "Original Transparent Facial Cleansing Bar, ...", "brand": "Neutrogena", "category": "Cleanser", "price": 2.97, ... },
+    { "id": "edf6dd5179e226468873b92fa327196d", "name": "Face Cleansing Bar - Fragrance Free - 3.5 oz - 2 pk", "brand": "Neutrogena", "category": "Cleanser", "price": 2.97, ... }
   ]
 }
 ```
@@ -666,18 +678,18 @@ Response:
   "country": "US",
   "budgetMode": "per-product",
   "budgetCap": 30,
-  "totalSteps": 4,
-  "estimatedMinCost": 38.93,
+  "totalSteps": 7,
+  "estimatedMinCost": ...,
   "steps": [
     {
       "step": 1,
       "productType": "Cleanser",
       "action": "Cleanse",
       "timeOfDay": "AM",
-      "lowestPrice": 8.97,
+      "lowestPrice": 2.97,
       "candidates": [
-        { "id": 34, "name": "Neutrogena Oil-Free Wash", "price": 8.97, ... },
-        { "id": 12, "name": "CeraVe Foaming Cleanser", "price": 14.99, ... }
+        { "id": "622eb30e541627f1a0f6539b70c21a6e", "name": "Face Cleansing Bar - Fragrance Free - 3.5 oz", "price": 2.97, ... },
+        { "id": "728093386e30397b4a7a04a8f4fb1f02", "name": "Original Transparent Facial Cleansing Bar, ...", "price": 2.97, ... }
       ]
     }
   ]
